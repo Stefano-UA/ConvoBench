@@ -1,0 +1,115 @@
+#!/bin/bash
+
+# ==============================================================================>
+# > CONFIGURATION
+# ==============================================================================>
+
+# Target directory
+TARGET_DIR="$1"
+
+# Jpegli Quality (0-100).
+QUALITY=90
+
+# ==============================================================================>
+# > CHECKS & SETUP
+# ==============================================================================>
+
+if [ -z "$TARGET_DIR" ]; then
+    echo "Usage: ${0} <directory>"
+    exit 1
+fi
+
+# Check for required tools
+for tool in magick cjpegli du; do
+    if ! command -v $tool &> /dev/null; then
+        echo "Error: Required '$tool' is not installed."
+        exit 1
+    fi
+done
+
+# ==============================================================================>
+# > BASELINE MEASUREMENT
+# ==============================================================================>
+
+echo -e "Starting Optimization...\n"
+echo "Directory: ${TARGET_DIR}"
+echo "Quality:   ${QUALITY}/100"
+
+# Calculate size BEFORE processing
+SIZE_BEFORE="$(du -sh "$TARGET_DIR" | cut -f1)"
+echo "----------------------------->"
+echo "> SIZE BEFORE: ${SIZE_BEFORE}"
+echo "----------------------------->"
+
+# ==============================================================================>
+# > MAIN PROCESSING LOOP
+# ==============================================================================>
+
+# Find all supported images
+find "$TARGET_DIR" -type f \( -iname "*.png" -o -iname "*.bmp" -o -iname "*.tiff" -o -iname "*.tif" -o -iname "*.webp" -o -iname "*.jpg" -o -iname "*.jpeg" \) | while read -r file; do
+    # Ignore temp files to prevent loops
+    [[ "$file" == *".tmp."* ]] && continue
+
+    # 1. Prepare Filenames
+    base_name="${file%.*}"
+    extension="${file##*.}"
+    extension="${extension,,}"
+
+    output_file="${base_name}.jpg"
+
+    temp_png="${base_name}.tmp.$$.png"
+    temp_jpg="${base_name}.tmp.$$.jpg"
+
+    echo "[PROCESSING] ${file}"
+
+    # 2. Standardize Input using PNG
+    magick "$file" -colorspace sRGB -strip -depth 8 -background white -flatten -alpha off -define png:compression-level=0 "$temp_png"
+
+    if [ -f "$temp_png" ]; then
+
+        # 3. Encode with Jpegli
+        # Output to temp_jpg first to ensure safety
+        cjpegli "$temp_png" "$temp_jpg" -q "$QUALITY" --progressive_level 2
+
+        # 4. Cleanup & Swap
+        # Check if TEMP jpg exists and has size
+        if [ -f "$temp_jpg" ] && [ -s "$temp_jpg" ]; then
+
+            # Safe to overwrite original now
+            mv "$temp_jpg" "$output_file"
+            rm "$temp_png"
+
+            # Logic: If source was NOT a JPG, we need to delete the old source file
+            if [[ "$extension" != "jpg" && "$extension" != "jpeg" ]]; then
+                rm "$file"
+                echo " -> Converted to JPG"
+            else
+                echo " -> Re-encoded JPG"
+            fi
+        else
+            echo " [ERROR] Jpegli encoding failed."
+            # Clean up partial files
+            [ -f "$temp_png" ] && rm "$temp_png"
+            [ -f "$temp_jpg" ] && rm "$temp_jpg"
+        fi
+
+    else
+        echo " [ERROR] ImageMagick flattening failed."
+    fi
+
+done
+
+# ==============================================================================>
+# > FINAL MEASUREMENT
+# ==============================================================================>
+
+# Calculate size AFTER processing
+SIZE_AFTER="$(du -sh "$TARGET_DIR" | cut -f1)"
+
+echo "----------------------------->"
+echo "> SUMMARY"
+echo "----------------------------->"
+echo "> SIZE BEFORE: ${SIZE_BEFORE}"
+echo "> SIZE AFTER:  ${SIZE_AFTER}"
+echo "----------------------------->"
+echo "Done."
