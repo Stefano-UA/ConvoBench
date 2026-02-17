@@ -81,7 +81,7 @@ for kernel_dir in "$OUTPUT_DIR"/*; do
         rel_path_output="./output/${kernel}/${filename}"
 
         # Append table row
-        echo "| <img src=\"${rel_path_input}\" width=\"300\" /> | <img src=\"${rel_path_output}\" width=\"300\" /> |" >> "$OUTPUT_FILE"
+        echo "| <img src=\"${rel_path_input}\" width=\"100%\" /> | <img src=\"${rel_path_output}\" width=\"100%\" /> |" >> "$OUTPUT_FILE"
     done
 
 done
