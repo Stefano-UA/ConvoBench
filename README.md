@@ -4,21 +4,21 @@ Implementation of a convolution algorithm in C++ with the intention of using it 
 
 ### Index
 
-- [Box Blur](#kernel-Box Blur)
-- [Emboss](#kernel-Emboss)
-- [Gaussian](#kernel-Gaussian)
-- [Ghost](#kernel-Ghost)
-- [Glitch X](#kernel-Glitch X)
-- [Glitch Y](#kernel-Glitch Y)
-- [Identity](#kernel-Identity)
-- [Laplacian 3](#kernel-Laplacian 3)
-- [Laplacian 5](#kernel-Laplacian 5)
-- [Motion Blur X](#kernel-Motion Blur X)
-- [Motion Blur Y](#kernel-Motion Blur Y)
-- [Sharpen 3](#kernel-Sharpen 3)
-- [Sharpen 5](#kernel-Sharpen 5)
-- [Sobel X](#kernel-Sobel X)
-- [Sobel Y](#kernel-Sobel Y)
+- [Box Blur](#kernel-box_blur)
+- [Emboss](#kernel-emboss)
+- [Gaussian](#kernel-gaussian)
+- [Ghost](#kernel-ghost)
+- [Glitch X](#kernel-glitch_x)
+- [Glitch Y](#kernel-glitch_y)
+- [Identity](#kernel-identity)
+- [Laplacian 3](#kernel-laplacian_3)
+- [Laplacian 5](#kernel-laplacian_5)
+- [Motion Blur X](#kernel-motion_blur_x)
+- [Motion Blur Y](#kernel-motion_blur_y)
+- [Sharpen 3](#kernel-sharpen_3)
+- [Sharpen 5](#kernel-sharpen_5)
+- [Sobel X](#kernel-sobel_x)
+- [Sobel Y](#kernel-sobel_y)
 
 ## Kernel: box_blur
 
@@ -396,4 +396,4 @@ Implementation of a convolution algorithm in C++ with the intention of using it 
 | <img src="./input/windows11_background.jpg" width="300" /> | <img src="./output/sobel_y/windows11_background.jpg" width="300" /> |
 
 ---
-*Readme generated on mar 17 feb 2026 23:17:09 CET*
+*Readme generated on mar 17 feb 2026 23:22:20 CET*

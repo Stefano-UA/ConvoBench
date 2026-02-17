@@ -33,12 +33,12 @@ for kernel_dir in "$OUTPUT_DIR"/*; do
     # Get the kernel name
     kernel="$(basename "$kernel_dir")"
 
-    IFS='_' read -ra kernel <<< "$kernel"
-    kernel="${kernel[@]^}"
+    IFS='_' read -ra pretty_kernel <<< "$kernel"
+    pretty_kernel="${pretty_kernel[@]^}"
 
     # Write a markdown link to the specific section
     # Note: GitHub Markdown converts "## Kernel: Name" to anchor "#kernel-name"
-    echo "- [$kernel](#kernel-$kernel)" >> "$OUTPUT_FILE"
+    echo "- [$pretty_kernel](#kernel-$kernel)" >> "$OUTPUT_FILE"
 done
 
 # Add some spacing after the index
