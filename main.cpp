@@ -8,6 +8,24 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
+#ifdef HARD_ERRORS
+    #define NOEXCEPT noexcept
+    #define NOEXCEPT_THROWS noexcept
+    #define NOEXCEPT_CHECKBOUNDS noexcept
+#else
+    #define NOEXCEPT
+    #ifdef NO_THROWS
+        #define NOEXCEPT_THROWS noexcept
+    #else
+        #define NOEXCEPT_THROWS
+    #endif
+    #ifdef CHECK_BOUNDS
+        #define NOEXCEPT_CHECKBOUNDS
+    #else
+        #define NOEXCEPT_CHECKBOUNDS noexcept
+    #endif
+#endif
+
 #define RATIO 0.01
 #define MIN_CHANNELS 3
 #define INPUT_DIRECTORY "./input/"
@@ -26,13 +44,13 @@ class Tensor {
         * @brief Construct a new Tensor object.
         * Allocates memory but leaves it uninitialized.
         */
-        Tensor(const unsigned int width, const unsigned int height, const unsigned int channels)
+        Tensor(const unsigned int width, const unsigned int height, const unsigned int channels) noexcept
             : width(width), height(height), channels(channels), length(width * height * channels), data(nullptr) {}
 
         /**
         * @brief Destructor. Frees allocated memory if data is not nullptr.
         */
-        virtual ~Tensor() {
+        virtual ~Tensor() noexcept {
             if (this->data != nullptr) {
                 delete[] this->data;
                 this->data = nullptr;
@@ -59,7 +77,7 @@ class Tensor {
         * @brief Mutable linear index access.
         * @throws std::out_of_range If ix is outside the buffer length.
         */
-        inline T& operator[](const unsigned int ix) {
+        inline T& operator[](const unsigned int ix) NOEXCEPT_CHECKBOUNDS {
             // Throw error when out of bounds
             #ifdef CHECK_BOUNDS
                 if (ix >= this->length) { throw std::out_of_range("Coordinate out of image bounds"); }
@@ -71,7 +89,7 @@ class Tensor {
         * @brief Read-only linear index access.
         * @throws std::out_of_range If ix is outside the buffer length.
         */
-        inline const T& operator[](const unsigned int ix) const {
+        inline const T& operator[](const unsigned int ix) const NOEXCEPT_CHECKBOUNDS {
             // Throw error when out of bounds
             #ifdef CHECK_BOUNDS
                 if (ix >= this->length) { throw std::out_of_range("Coordinate out of image bounds"); }
@@ -83,7 +101,7 @@ class Tensor {
         * @brief Mutable 3D coordinate access (x, y, channel).
         * @throws std::out_of_range If coordinates exceed dimensions.
         */
-        inline T& operator[](const unsigned int x, const unsigned y, const unsigned c) {
+        inline T& operator[](const unsigned int x, const unsigned y, const unsigned c) NOEXCEPT_CHECKBOUNDS {
             // Throw error when out of bounds
             #ifdef CHECK_BOUNDS
                 if ((x >= this->width) || (y >= this->height)) { throw std::out_of_range("Coordinate out of image bounds"); }
@@ -96,7 +114,7 @@ class Tensor {
         * @brief Read-only 3D coordinate access (x, y, channel).
         * @throws std::out_of_range If coordinates exceed dimensions.
         */
-        inline const T& operator[](const unsigned int x, const unsigned int y, const unsigned int c) const {
+        inline const T& operator[](const unsigned int x, const unsigned int y, const unsigned int c) const NOEXCEPT_CHECKBOUNDS {
             // Throw error when out of bounds
             #ifdef CHECK_BOUNDS
                 if ((x >= this->width) || (y >= this->height)) { throw std::out_of_range("Coordinate out of image bounds"); }
@@ -109,7 +127,7 @@ class Tensor {
         * @brief Output stream operator to serialize the tensor to text.
         * Format: Width Height Channels [Newline] Data...
         */
-        friend std::ostream& operator<<(std::ostream& os, const Tensor<T>& tensor) {
+        friend std::ostream& operator<<(std::ostream& os, const Tensor<T>& tensor) NOEXCEPT {
             os << tensor.width << " " << tensor.height << " " << tensor.channels << "\n";
             for (unsigned int i = 0; i < tensor.length; ++i) {
                 os << tensor.data[i] << " ";
@@ -122,7 +140,7 @@ class Tensor {
         * @brief Input stream operator to deserialize the tensor from text.
         * Reallocates memory based on the read dimensions.
         */
-        friend std::istream& operator>>(std::istream& is, Tensor<T>& tensor) {
+        friend std::istream& operator>>(std::istream& is, Tensor<T>& tensor) NOEXCEPT {
             unsigned int w, h, c;
             if (!(is >> w >> h >> c)) { return is; }
             // Store previous length
@@ -157,7 +175,7 @@ class Tensor {
         * @brief Helper to allocate memory for the internal data buffer.
         * Initializes memory to zero.
         */
-        inline void allocate(unsigned int size) {
+        inline void allocate(const unsigned int size) NOEXCEPT {
             if (this->data) { delete[] this->data; }
             // Allocate memory for the data initialized to zero
             this->data = new T[size]();
@@ -175,7 +193,7 @@ class Image : public Tensor<unsigned char> {
         /**
         * @brief Constructor for creating an empty blank image.
         */
-        Image(const unsigned int width, const unsigned int height, const unsigned int channels) : Tensor(width, height, channels), is_stbi(false) {
+        Image(const unsigned int width, const unsigned int height, const unsigned int channels) noexcept : Tensor(width, height, channels), is_stbi(false) {
             // Allocate memory for the data initialized to zero
             Tensor::allocate(this->length);
         }
@@ -185,7 +203,7 @@ class Image : public Tensor<unsigned char> {
         * @param path The filesystem path to the image.
         * @throws std::runtime_error If loading fails.
         */
-        Image(const std::string& path) : Tensor(0, 0, 0), is_stbi(true) {
+        Image(const std::string& path) NOEXCEPT_THROWS : Tensor(0, 0, 0), is_stbi(true) {
             int w, h, c;
             // Load image using external library
             unsigned char* tdata = stbi_load(path.c_str(), &w, &h, &c, MIN_CHANNELS);
@@ -203,7 +221,7 @@ class Image : public Tensor<unsigned char> {
         * Distinguishes between memory allocated by 'new' (Base class)
         * and memory allocated by 'stbi_load' (malloc), freeing appropriately.
         */
-        ~Image() {
+        ~Image() noexcept {
             if (this->is_stbi) {
                 stbi_image_free(this->data);
                 this->data = nullptr;
@@ -237,7 +255,7 @@ class Image : public Tensor<unsigned char> {
         /**
         * @brief Writes the current image data to a file (PNG format).
         */
-        void write(const std::string& path) const {
+        void write(const std::string& path) const NOEXCEPT {
             stbi_write_png(path.c_str(), this->width, this->height, this->channels, this->data, 0);
         }
 
@@ -256,7 +274,7 @@ class Kernel : public Tensor<double> {
         /**
         * @brief Constructor for creating an empty blank kernel.
         */
-        Kernel(const unsigned int width, const unsigned int height, const unsigned int channels) : Tensor(width, height, channels) {
+        Kernel(const unsigned int width, const unsigned int height, const unsigned int channels) noexcept : Tensor(width, height, channels) {
             // Allocate memory for the data initialized to zero
             Tensor::allocate(this->length);
         }
@@ -275,19 +293,20 @@ class Kernel : public Tensor<double> {
         * * Usage: kernel.set({{0,-1,0}, {-1,4,-1}, {0,-1,0}});
         * @throws std::invalid_argument If matrix dimension doesn't matches kernel's.
         */
-        void set(const std::initializer_list<std::initializer_list<double>>& matrix) {
-            // Check if dimensions match
-            if (matrix.size() != this->height || matrix.begin()->size() != this->width) {
-                throw std::invalid_argument("Matrix size does not match kernel dimensions");
-            }
-            unsigned int y = 0;
+        void set(const std::initializer_list<std::initializer_list<double>>& matrix) NOEXCEPT_THROWS {
+            #ifndef NO_THROWS
+                // Check if dimensions match
+                if (matrix.size() != this->height || matrix.begin()->size() != this->width) {
+                    throw std::invalid_argument("Matrix size does not match kernel dimensions");
+                }
+            #endif
+            double* ptr = this->data;
+            const unsigned int c = this->channels;
             for (const auto& row : matrix) {
-                unsigned int x = 0;
-                for (const double val : row) {
-                    for (unsigned int c = 0; c < this->channels; ++c) {
-                        (*this)[x, y, c] = val;
-                    } x++;
-                } y++;
+                for (const double v : row) {
+                    std::fill_n(ptr, c, v);
+                    ptr+=c;
+                }
             }
         }
 
@@ -298,7 +317,7 @@ class Kernel : public Tensor<double> {
         * @brief Identity Kernel (3x3).
         * Does not modify the image.
         */
-        static Kernel identity(unsigned int channels = 3) {
+        static Kernel identity(const unsigned int channels = 3) NOEXCEPT_THROWS {
             Kernel k(3, 3, channels);
             k.set({
                 {0, 0, 0},
@@ -313,8 +332,10 @@ class Kernel : public Tensor<double> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        static Kernel box_blur(unsigned int size, unsigned int channels = 3) {
-            if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+        static Kernel box_blur(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+            #ifndef NO_THROWS
+                if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+            #endif
             Kernel k(size, size, channels);
             // Fill with 1.0. The convolution will divide by the total sum.
             for(unsigned int i=0; i < k.len(); ++i) { k.data[i] = 1.0; }
@@ -328,23 +349,31 @@ class Kernel : public Tensor<double> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        static Kernel gaussian(unsigned int size, unsigned int channels = 3) {
-            if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+        static Kernel gaussian(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+            #ifndef NO_THROWS
+                if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+            #endif
             Kernel k(size, size, channels);
             // Compute sigma assuming the kernel radius covers roughly 3 sigma.
-            double sigma = std::max(1.0, size / 6.0);
-            double two_sigma_sq = 2.0 * sigma * sigma;
-            // Compute center offset (radius)
-            int radius = size / 2;
-            // Loop through values to write
-            for (int x = (-radius); x <= radius; ++x) {
-                for (int y = (-radius); y <= radius; ++y) {
-                    // Gaussian formula without normalization
-                    double val = std::exp(-(((x * x) + (y * y)) / two_sigma_sq));
-                    // Apply to all channels
-                    for (unsigned int c = 0; c < channels; ++c) {
-                        k[x + radius, y + radius, c] = val;
-                    }
+            const double sigma = std::max(1.0, size / 6.0);
+            const double two_sigma_sq = 1.0 / (2.0 * sigma * sigma);
+            const int radius = size / 2;
+            // Precompute Gaussian values
+            std::vector<double> gaussian_vs(size);
+            for (int i = 0; i < size; ++i) {
+                const int x = (i - radius);
+                gaussian_vs[i] = std::exp(-(x * x) * two_sigma_sq);
+            }
+            // Get raw pointer
+            double* ptr = k.data;
+            for (unsigned int y = 0; y < size; ++y) {
+                // Cache the Y component of the gaussian
+                const double v_y = gaussian_vs[y];
+                for (unsigned int x = 0; x < size; ++x) {
+                    // Combine X and Y components (exp(a+b) = exp(a)*exp(b))
+                    const double v = (v_y * gaussian_vs[x]);
+                    std::fill_n(ptr, channels, v);
+                    ptr += channels;
                 }
             } return k;
         }
@@ -353,7 +382,7 @@ class Kernel : public Tensor<double> {
         * @brief Sharpen (3x3).
         * Increases contrast between adjacent pixels.
         */
-        static Kernel sharpen(unsigned int channels = 3) {
+        static Kernel sharpen(const unsigned int channels = 3) NOEXCEPT_THROWS {
             Kernel k(3, 3, channels);
             k.set({
                 { 0, -1,  0},
@@ -366,7 +395,7 @@ class Kernel : public Tensor<double> {
         * @brief Sharpen (5x5).
         * A more aggressive sharpening filter that accounts for a wider area.
         */
-        static Kernel sharpen5(unsigned int channels = 3) {
+        static Kernel sharpen5(const unsigned int channels = 3) NOEXCEPT_THROWS {
             Kernel k(5, 5, channels);
             k.set({
                 {-1, -1, -1, -1, -1},
@@ -381,7 +410,7 @@ class Kernel : public Tensor<double> {
         * @brief Laplacian (3x3).
         * Standard omnidirectional edge detection.
         */
-        static Kernel laplacian(unsigned int channels = 3) {
+        static Kernel laplacian(const unsigned int channels = 3) NOEXCEPT_THROWS {
             Kernel k(3, 3, channels);
             k.set({
                 { 0, -1,  0},
@@ -395,7 +424,7 @@ class Kernel : public Tensor<double> {
         * Combines Gaussian smoothing with Laplacian edge detection.
         * Less sensitive to noise than the standard 3x3 Laplacian.
         */
-        static Kernel laplacian5(unsigned int channels = 3) {
+        static Kernel laplacian5(const unsigned int channels = 3) NOEXCEPT_THROWS {
             Kernel k(5, 5, channels);
             k.set({
                 {0,  0, -1,  0, 0},
@@ -411,7 +440,7 @@ class Kernel : public Tensor<double> {
         * @brief Sobel X (3x3).
         * Detects vertical lines, meaning changes in horizontal intensity.
         */
-        static Kernel sobel_x(unsigned int channels = 3) {
+        static Kernel sobel_x(const unsigned int channels = 3) NOEXCEPT_THROWS {
             Kernel k(3, 3, channels);
             k.set({
                 {-1, 0, 1},
@@ -424,7 +453,7 @@ class Kernel : public Tensor<double> {
         * @brief Sobel Y (3x3).
         * Detects horizontal lines, meaning changes in vertical intensity.
         */
-        static Kernel sobel_y(unsigned int channels = 3) {
+        static Kernel sobel_y(const unsigned int channels = 3) NOEXCEPT_THROWS {
             Kernel k(3, 3, channels);
             k.set({
                 {-1, -2, -1},
@@ -437,7 +466,7 @@ class Kernel : public Tensor<double> {
         * @brief Emboss (3x3).
         * Simulates a 3D relief effect by highlighting edges in a specific direction.
         */
-        static Kernel emboss(unsigned int channels = 3) {
+        static Kernel emboss(const unsigned int channels = 3) NOEXCEPT_THROWS {
             Kernel k(3, 3, channels);
             k.set({
                 {-2, -1,  0},
@@ -452,8 +481,10 @@ class Kernel : public Tensor<double> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        static Kernel motion_blur_x(unsigned int size, unsigned int channels = 3) {
-            if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+        static Kernel motion_blur_x(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+            #ifndef NO_THROWS
+                if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+            #endif
             Kernel k(size, 1, channels);
             for(unsigned int i=0; i < k.len(); ++i) { k.data[i] = 1.0; }
             return k;
@@ -465,8 +496,10 @@ class Kernel : public Tensor<double> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        static Kernel motion_blur_y(unsigned int size, unsigned int channels = 3) {
-            if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+        static Kernel motion_blur_y(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+            #ifndef NO_THROWS
+                if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+            #endif
             Kernel k(1, size, channels);
             for(unsigned int i=0; i < k.len(); ++i) { k.data[i] = 1.0; }
             return k;
@@ -478,8 +511,10 @@ class Kernel : public Tensor<double> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        static Kernel glitch_x(unsigned int size, unsigned int channels = 3) {
-            if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+        static Kernel glitch_x(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+            #ifndef NO_THROWS
+                if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+            #endif
             Kernel k(size, 1, channels);
             k[0, 0, 0] = 1.0; k[(k.width/2), 0, 1] = 1.0; k[(k.width-1), 0, 2] = 1.0;
             for (unsigned int c = 3; c < channels; ++c) {
@@ -493,8 +528,10 @@ class Kernel : public Tensor<double> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        static Kernel glitch_y(unsigned int size, unsigned int channels = 3) {
-            if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+        static Kernel glitch_y(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+            #ifndef NO_THROWS
+                if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+            #endif
             Kernel k(1, size, channels);
             k[0, 0, 0] = 1.0; k[0, (k.height/2), 1] = 1.0; k[0, (k.height-1), 2] = 1.0;
             for (unsigned int c = 3; c < channels; ++c) {
@@ -508,8 +545,10 @@ class Kernel : public Tensor<double> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        static Kernel ghost(unsigned int size, unsigned int channels = 3) {
-            if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+        static Kernel ghost(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+            #ifndef NO_THROWS
+                if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
+            #endif
             Kernel k(size, size, channels);
             k[0] = 1.0; k[k.length - 1] = 1.0;
             return k;
@@ -523,7 +562,7 @@ class Kernel : public Tensor<double> {
         * @param ratio The fraction of the image dimension to use.
         * @return unsigned int An odd integer representing the kernel size (min 3).
         */
-        static unsigned int get_size_by_ratio(const Image& image, double ratio = RATIO) {
+        static unsigned int get_size_by_ratio(const Image& image, const double ratio = RATIO) NOEXCEPT_THROWS {
             // Compute size with ratio
             unsigned int size = static_cast<unsigned int>(std::min(image.w(), image.h()) * ratio);
             // Size must always be odd
@@ -539,7 +578,7 @@ class Kernel : public Tensor<double> {
 * @param kernel The convolution kernel.
 * @return Image A new image containing the convolution result.
 */
-Image convolute(const Image& image, const Kernel& kernel) {
+Image convolute(const Image& image, const Kernel& kernel) NOEXCEPT {
     // Initialize convolution image
     Image conv(image.w(), image.h(), image.c());
     // Initialize sum vector
@@ -585,9 +624,8 @@ Image convolute(const Image& image, const Kernel& kernel) {
 * * @param folder The directory path to scan.
 * @return std::vector<std::string> List of full paths to found images.
 */
-std::vector<std::string> get_image_paths(const std::string& folder) {
+std::vector<std::string> get_image_paths(const std::string& folder) noexcept {
     std::vector<std::string> files;
-
     for (const auto& entry : std::filesystem::directory_iterator(folder)) {
         // Skip non-file entries
         if (!entry.is_regular_file()) { continue; };
@@ -608,8 +646,7 @@ std::vector<std::string> get_image_paths(const std::string& folder) {
 * 3. Creates a specific subdirectory for that kernel.
 * 4. Applies the kernel to all images found in input.
 */
-int main() {
-
+int main() noexcept {
     // Delete directory if exists
     std::filesystem::remove_all(OUTPUT_DIRECTORY);
     // Ensure base output directory exists
@@ -621,20 +658,19 @@ int main() {
         std::cerr << "No images found in " << INPUT_DIRECTORY << "\n";
         return 1;
     }
-
     // Define list of kernels to process.
     // We use a lambda to generate the kernel object on demand.
     std::vector<std::pair<std::string, std::function<Kernel(unsigned int, unsigned int)>>> kernel_list = {
         {"identity",       [](unsigned int s, unsigned int c){ return Kernel::identity(c); }},
-        {"box_blur",     [](unsigned int s, unsigned int c){ return Kernel::box_blur(s, c); }},
-        {"gaussian",     [](unsigned int s, unsigned int c){ return Kernel::gaussian(s, c); }},
+        {"box_blur",       [](unsigned int s, unsigned int c){ return Kernel::box_blur(s, c); }},
+        {"gaussian",       [](unsigned int s, unsigned int c){ return Kernel::gaussian(s, c); }},
         {"sharpen_3",      [](unsigned int s, unsigned int c){ return Kernel::sharpen(c); }},
-        {"sharpen_5",     [](unsigned int s, unsigned int c){ return Kernel::sharpen5(c); }},
-        {"laplacian_3",   [](unsigned int s, unsigned int c){ return Kernel::laplacian(c); }},
-        {"laplacian_5",   [](unsigned int s, unsigned int c){ return Kernel::laplacian5(c); }},
-        {"sobel_x",       [](unsigned int s, unsigned int c){ return Kernel::sobel_x(c); }},
-        {"sobel_y",       [](unsigned int s, unsigned int c){ return Kernel::sobel_y(c); }},
-        {"emboss",        [](unsigned int s, unsigned int c){ return Kernel::emboss(c); }},
+        {"sharpen_5",      [](unsigned int s, unsigned int c){ return Kernel::sharpen5(c); }},
+        {"laplacian_3",    [](unsigned int s, unsigned int c){ return Kernel::laplacian(c); }},
+        {"laplacian_5",    [](unsigned int s, unsigned int c){ return Kernel::laplacian5(c); }},
+        {"sobel_x",        [](unsigned int s, unsigned int c){ return Kernel::sobel_x(c); }},
+        {"sobel_y",        [](unsigned int s, unsigned int c){ return Kernel::sobel_y(c); }},
+        {"emboss",         [](unsigned int s, unsigned int c){ return Kernel::emboss(c); }},
         {"motion_blur_x", [](unsigned int s, unsigned int c){ return Kernel::motion_blur_x(s, c); }},
         {"motion_blur_y", [](unsigned int s, unsigned int c){ return Kernel::motion_blur_y(s, c); }},
         {"glitch_x",      [](unsigned int s, unsigned int c){ return Kernel::glitch_x(s, c); }},
@@ -642,8 +678,10 @@ int main() {
         {"ghost",         [](unsigned int s, unsigned int c){ return Kernel::ghost(s, c); }}
     };
 
-    // Output start message
-    std::cout << "Starting batch processing...\n";
+    #ifndef SILENT
+        // Output start message
+        std::cout << "Starting batch processing...\n";
+    #endif
 
     // Loop through each kernel definition
     for (const auto& kv : kernel_list) {
@@ -651,7 +689,9 @@ int main() {
         std::string k_name = kv.first;
         const auto& k_factory = kv.second;
 
-        std::cout << "[Kernel] " << k_name << "...\n";
+        #ifndef SILENT
+            std::cout << "[Kernel] " << k_name << "...\n";
+        #endif
 
         // Create subdirectory for this kernel
         std::string out_dir = OUTPUT_DIRECTORY + k_name + "/";
@@ -676,16 +716,21 @@ int main() {
                 // Write to disk
                 conv.write(out_path);
 
-                // Print processing info
-                printf(" -> Processed '%s' (%dx%dx%d)\n", filename.c_str(), image.w(), image.h(), image.c());
+                #ifndef SILENT
+                    // Print processing info
+                    printf(" -> Processed '%s' (%dx%dx%d)\n", filename.c_str(), image.w(), image.h(), image.c());
+                #endif
 
             } catch (const std::exception& e) {
                 std::cerr << " [ERROR] Failed to process '" << file << "': " << e.what() << "\n";
             }
         }
-        std::cout << " Done.\n";
+        #ifndef SILENT
+            std::cout << " Done.\n";
+        #endif
     }
-
-    std::cout << "All operations completed successfully.\n";
+    #ifndef SILENT
+        std::cout << "All operations completed successfully.\n";
+    #endif
     return 0;
 }

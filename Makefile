@@ -7,10 +7,23 @@ LIB_DIR  := lib
 # -Wall -Wextra : Show all warnings
 # -MMD -MP : Generate .d files to track header dependencies automatically
 # -I$(LIB_DIR) : Look for header files in the $(LIB_DIR) directory
-CXXFLAGS := -std=c++23 -MMD -MP -march=native -mtune=native -I$(LIB_DIR)
+CXXFLAGS := -std=c++23 -MMD -MP -march=native -mtune=native -I$(LIB_DIR) -fopt-info-vec-missed
+#-fopt-info-vec-optimized
 
 # Uncomment to include expensive bound checks
 # CXXFLAGS := $(CXXFLAGS) -DCHECK_BOUNDS -DPADDED_ACCESS
+
+# Uncomment to disable all prints
+CXXFLAGS := $(CXXFLAGS) -DSILENT
+
+# Uncomment to disable all safety error throwing checks
+CXXFLAGS := $(CXXFLAGS) -DNO_THROWS
+
+# Uncomment to disable all error handling
+CXXFLAGS := $(CXXFLAGS) -DHARD_ERRORS
+
+# Uncomment to enable more specific optimization flags at the cost error reporting, math precision, and compile time
+CXXFLAGS := $(CXXFLAGS) -fno-math-errno -ffast-math -funroll-loops -flto -finline-functions
 
 BASENAME    := main
 BUILD_DIR   := build
