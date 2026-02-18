@@ -37,8 +37,7 @@ for kernel_dir in "$OUTPUT_DIR"/*; do
     pretty_kernel="${pretty_kernel[@]^}"
 
     # Write a markdown link to the specific section
-    # Note: GitHub Markdown converts "## Kernel: Name" to anchor "#kernel-name"
-    echo "- [$pretty_kernel](#kernel-$kernel)" >> "$OUTPUT_FILE"
+    echo "- [${pretty_kernel}](#kernel-${kernel})" >> "$OUTPUT_FILE"
 done
 
 # Add some spacing after the index
@@ -55,13 +54,22 @@ for kernel_dir in "$OUTPUT_DIR"/*; do
 
     echo "Processing section: $kernel..."
 
-    # Write title for this kernel
     echo "" >> "$OUTPUT_FILE"
-    echo "## Kernel: $kernel" >> "$OUTPUT_FILE"
+    
+    # Add an anchor div so the links work
+    echo "<div id=\"kernel-${kernel}\"></div>" >> "$OUTPUT_FILE"
+
+    # Open the details block
+    echo "<details>" >> "$OUTPUT_FILE"
+    
+    # Add the summary
+    echo "<summary><strong>Kernel: ${kernel}</strong></summary>" >> "$OUTPUT_FILE"
+    
+    # Empty line required for the markdown table to render inside HTML
     echo "" >> "$OUTPUT_FILE"
 
     # Start table for this folder
-    echo "| Original | Processed ($kernel) |" >> "$OUTPUT_FILE"
+    echo "| Original | Processed (${kernel}) |" >> "$OUTPUT_FILE"
     echo "| :------: | :-------: |" >> "$OUTPUT_FILE"
 
     # Iterate through images INSIDE this kernel folder
@@ -71,18 +79,25 @@ for kernel_dir in "$OUTPUT_DIR"/*; do
         [ -f "$image" ] || continue
 
         filename="$(basename "$image")"
-        orig_path="${INPUT_DIR}/${filename}"
+        orig_path="${INPUT_DIR}/${filename%.*}"
 
-        # Check if the corresponding ORIGINAL file exists
-        [ -f "$orig_path" ] || continue
+        shopt -s nullglob
+        # Get an array of matches
+        matches=( "${orig_path}".{jpg,jpeg,png} )
+        # Check if the array has at least one item
+        [ ${#matches[@]} -gt 0 ] || continue
+        orig_path="${matches[0]}"
 
         # Markdown requires RELATIVE paths to display images on GitHub.
-        rel_path_input="./input/${filename}"
-        rel_path_output="./output/${kernel}/${filename}"
+        rel_path_input="$(realpath --relative-to="${HERE}/../" "$orig_path")"
+        rel_path_output="$(realpath --relative-to="${HERE}/../" "$image")"
 
         # Append table row
-        echo "| <img src=\"${rel_path_input}\" width=\"100%\" /> | <img src=\"${rel_path_output}\" width=\"100%\" /> |" >> "$OUTPUT_FILE"
+        echo "| <img src=\"./${rel_path_input}\" width=\"100%\" /> | <img src=\"./${rel_path_output}\" width=\"100%\" /> |" >> "$OUTPUT_FILE"
     done
+
+    # 5. Close the details block
+    echo "</details>" >> "$OUTPUT_FILE"
 
 done
 
