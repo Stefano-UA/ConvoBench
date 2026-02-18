@@ -59,8 +59,11 @@ class Tensor {
         * @brief Mutable linear index access.
         * @throws std::out_of_range If ix is outside the buffer length.
         */
-        T& operator[](const unsigned int ix) {
-            if (ix >= this->length) { throw std::out_of_range("Coordinate out of image bounds"); }
+        inline T& operator[](const unsigned int ix) {
+            // Throw error when out of bounds
+            #ifdef CHECK_BOUNDS
+                if (ix >= this->length) { throw std::out_of_range("Coordinate out of image bounds"); }
+            #endif
             return this->data[ix];
         }
 
@@ -68,9 +71,11 @@ class Tensor {
         * @brief Read-only linear index access.
         * @throws std::out_of_range If ix is outside the buffer length.
         */
-        const T& operator[](const unsigned int ix) const {
+        inline const T& operator[](const unsigned int ix) const {
             // Throw error when out of bounds
-            if (ix >= this->length) { throw std::out_of_range("Coordinate out of image bounds"); }
+            #ifdef CHECK_BOUNDS
+                if (ix >= this->length) { throw std::out_of_range("Coordinate out of image bounds"); }
+            #endif
             return this->data[ix];
         }
 
@@ -78,9 +83,11 @@ class Tensor {
         * @brief Mutable 3D coordinate access (x, y, channel).
         * @throws std::out_of_range If coordinates exceed dimensions.
         */
-        T& operator[](const unsigned int x, const unsigned y, const unsigned c) {
+        inline T& operator[](const unsigned int x, const unsigned y, const unsigned c) {
             // Throw error when out of bounds
-            if ((x >= this->width) || (y >= this->height)) { throw std::out_of_range("Coordinate out of image bounds"); }
+            #ifdef CHECK_BOUNDS
+                if ((x >= this->width) || (y >= this->height)) { throw std::out_of_range("Coordinate out of image bounds"); }
+            #endif
             // Get double at (x, y) for channel c
             return this->data[((x + (y * this->width)) * this->channels) + c];
         }
@@ -89,9 +96,11 @@ class Tensor {
         * @brief Read-only 3D coordinate access (x, y, channel).
         * @throws std::out_of_range If coordinates exceed dimensions.
         */
-        const T& operator[](const unsigned int x, const unsigned int y, const unsigned int c) const {
+        inline const T& operator[](const unsigned int x, const unsigned int y, const unsigned int c) const {
             // Throw error when out of bounds
-            if ((x >= this->width) || (y >= this->height)) { throw std::out_of_range("Coordinate out of image bounds"); }
+            #ifdef CHECK_BOUNDS
+                if ((x >= this->width) || (y >= this->height)) { throw std::out_of_range("Coordinate out of image bounds"); }
+            #endif
             // Get char at (x, y) for channel c
             return this->data[((x + (y * this->width)) * this->channels) + c];
         }
@@ -133,10 +142,10 @@ class Tensor {
             } return is;
         }
 
-        const unsigned int w() const noexcept { return this->width; }
-        const unsigned int h() const noexcept { return this->height; }
-        const unsigned int c() const noexcept { return this->channels; }
-        const unsigned int len() const noexcept { return this->length; }
+        inline const unsigned int w() const noexcept { return this->width; }
+        inline const unsigned int h() const noexcept { return this->height; }
+        inline const unsigned int c() const noexcept { return this->channels; }
+        inline const unsigned int len() const noexcept { return this->length; }
 
     protected:
 
@@ -216,9 +225,11 @@ class Image : public Tensor<unsigned char> {
         * if coordinates are out of bounds, allowing the convolution kernel to
         * slide over the edges of the image without crashing.
         */
-        const unsigned char& operator[](const unsigned int x, const unsigned int y, const unsigned int c) const noexcept {
+        inline const unsigned char& operator[](const unsigned int x, const unsigned int y, const unsigned int c) const noexcept {
             // Return 0 Padding when out of bounds
-            if ((x >= this->width) || (y >= this->height)) { return Image::padding; }
+            #ifdef PADDED_ACCESS
+                if ((x >= this->width) || (y >= this->height)) { return Image::padding; }
+            #endif
             // Get char at (x, y) for channel c
             return Tensor::operator[](x, y, c);
         }
@@ -280,8 +291,8 @@ class Kernel : public Tensor<double> {
             }
         }
 
-        const unsigned int hw() const noexcept { return (this->width/2); }
-        const unsigned int hh() const noexcept { return (this->height/2); }
+        inline const unsigned int hw() const noexcept { return (this->width/2); }
+        inline const unsigned int hh() const noexcept { return (this->height/2); }
 
         /**
         * @brief Identity Kernel (3x3).
@@ -541,28 +552,29 @@ Image convolute(const Image& image, const Kernel& kernel) {
             for (unsigned int j = 0; j < kernel.h(); ++j) {
                 sums[c] += kernel[i, j, c];
             }
-        }
+        } // Check if zero with some leeway
+        if (std::abs(sums[c]) <= 1e-5) { sums[c] = 1.0; } else { sums[c] = 1.0 / sums[c]; }
     }
-    // Loop through image width
-    for (unsigned int x = kernel.hw(); x < (image.w() - kernel.hw()); ++x) {
-        // Loop through image height
-        for (unsigned int y = kernel.hh(); y < (image.h() - kernel.hh()); ++y) {
+    // Loop through image height
+    for (unsigned int y = kernel.hh(); y < (image.h() - kernel.hh()); ++y) {
+        // Loop through image width
+        for (unsigned int x = kernel.hw(); x < (image.w() - kernel.hw()); ++x) {
             // Loop through channels
             for (unsigned int c = 0; c < image.c(); ++c) {
                 // Operation buffer
-                long double buffer = 0;
-                // Loop through kernel width
-                for (unsigned int i = 0; i < kernel.w(); ++i) {
-                    // Loop through kernel height
-                    for (unsigned int j = 0; j < kernel.h(); ++j) {
+                double buffer = 0;
+                // Loop through kernel height
+                for (unsigned int j = 0; j < kernel.h(); ++j) {
+                    // Loop through kernel width
+                    for (unsigned int i = 0; i < kernel.w(); ++i) {
                         // Accumulate operations
                         buffer += image[x + (i - kernel.hw()), y + (j - kernel.hh()), c] * kernel[i, j, c];
                     }
                 }
-                // Check if zero with some leeway
-                if (std::abs(sums[c]) > 1e-5) { buffer = (buffer / sums[c]); }
+                // Normalize, sums[c] is never 0
+                buffer = (buffer * sums[c]);
                 // Clamp buffer to ensure its in range and cast to unsigned char
-                conv[x, y, c] = static_cast<unsigned char>(std::max(0.0L, std::min(buffer, 255.0L)));
+                conv[x, y, c] = static_cast<unsigned char>(std::max(0.0, std::min(buffer, 255.0)));
             }
         }
     } return conv;
