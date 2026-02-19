@@ -7,8 +7,8 @@ LIB_DIR  := lib
 # -Wall -Wextra : Show all warnings
 # -MMD -MP : Generate .d files to track header dependencies automatically
 # -I$(LIB_DIR) : Look for header files in the $(LIB_DIR) directory
-CXXFLAGS := -std=c++23 -MMD -MP -march=native -mtune=native -I$(LIB_DIR) -fopt-info-vec-missed
-#-fopt-info-vec-optimized
+# -fopt-info-vec-missed -fopt-info-vec-optimized : Print information about automatic vectorization
+CXXFLAGS := -std=c++23 -MMD -MP -march=native -mtune=native -I$(LIB_DIR) -fopt-info-vec-missed -fopt-info-vec-optimized
 
 # Uncomment to include expensive bound checks
 # CXXFLAGS := $(CXXFLAGS) -DCHECK_BOUNDS -DPADDED_ACCESS
@@ -23,7 +23,7 @@ CXXFLAGS := $(CXXFLAGS) -DNO_THROWS
 CXXFLAGS := $(CXXFLAGS) -DHARD_ERRORS
 
 # Uncomment to enable more specific optimization flags at the cost error reporting, math precision, and compile time
-CXXFLAGS := $(CXXFLAGS) -fno-math-errno -ffast-math -funroll-loops -flto -finline-functions
+CXXFLAGS := $(CXXFLAGS) -fno-math-errno -ffast-math -funroll-loops -flto -finline-functions -fno-exceptions -fno-rtti
 
 BASENAME    := main
 BUILD_DIR   := build
@@ -32,6 +32,11 @@ RESOURCES   := input output
 
 # Default rule
 all: O0 O1 O2 O3
+
+# OG Profile: -OG, adds .oG suffix
+OG: CXXFLAGS := $(CXXFLAGS) -O0 -g
+OG: PROFILE  := OG
+OG: $(BUILD_DIR)/$(BASENAME).oG
 
 # O0 Profile: -O0, adds .o0 suffix
 O0: CXXFLAGS := $(CXXFLAGS) -O0
