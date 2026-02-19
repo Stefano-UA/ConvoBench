@@ -10,6 +10,9 @@ Implementation of a convolution algorithm in C++ with the intention of using it 
 - [Ghost](#kernel-ghost)
 - [Glitch X](#kernel-glitch_x)
 - [Glitch Y](#kernel-glitch_y)
+- [Glow B](#kernel-glow_b)
+- [Glow G](#kernel-glow_g)
+- [Glow R](#kernel-glow_r)
 - [Identity](#kernel-identity)
 - [Laplacian 3](#kernel-laplacian_3)
 - [Laplacian 5](#kernel-laplacian_5)
@@ -186,6 +189,90 @@ Implementation of a convolution algorithm in C++ with the intention of using it 
 | <img src="./input/voxel_cube.jpg" width="100%" /> | <img src="./output/glitch_y/voxel_cube.jpg" width="100%" /> |
 | <img src="./input/wavy_background.jpg" width="100%" /> | <img src="./output/glitch_y/wavy_background.jpg" width="100%" /> |
 | <img src="./input/windows11_background.jpg" width="100%" /> | <img src="./output/glitch_y/windows11_background.jpg" width="100%" /> |
+</details>
+
+<div id="kernel-glow_b"></div>
+<details>
+<summary><strong>Kernel: glow_b</strong></summary>
+
+| Original | Processed (glow_b) |
+| :------: | :-------: |
+| <img src="./input/abstract_shape.jpg" width="100%" /> | <img src="./output/glow_b/abstract_shape.jpg" width="100%" /> |
+| <img src="./input/arrows_up.jpg" width="100%" /> | <img src="./output/glow_b/arrows_up.jpg" width="100%" /> |
+| <img src="./input/building_windows.jpg" width="100%" /> | <img src="./output/glow_b/building_windows.jpg" width="100%" /> |
+| <img src="./input/cyan_fractal.jpg" width="100%" /> | <img src="./output/glow_b/cyan_fractal.jpg" width="100%" /> |
+| <img src="./input/geometric_shapes.jpg" width="100%" /> | <img src="./output/glow_b/geometric_shapes.jpg" width="100%" /> |
+| <img src="./input/grey_fractal.jpg" width="100%" /> | <img src="./output/glow_b/grey_fractal.jpg" width="100%" /> |
+| <img src="./input/lone_coffe.jpg" width="100%" /> | <img src="./output/glow_b/lone_coffe.jpg" width="100%" /> |
+| <img src="./input/lone_lamp.jpg" width="100%" /> | <img src="./output/glow_b/lone_lamp.jpg" width="100%" /> |
+| <img src="./input/lone_leaf.jpg" width="100%" /> | <img src="./output/glow_b/lone_leaf.jpg" width="100%" /> |
+| <img src="./input/milky_way.jpg" width="100%" /> | <img src="./output/glow_b/milky_way.jpg" width="100%" /> |
+| <img src="./input/only_blue.jpg" width="100%" /> | <img src="./output/glow_b/only_blue.jpg" width="100%" /> |
+| <img src="./input/pedestrian_crossing.jpg" width="100%" /> | <img src="./output/glow_b/pedestrian_crossing.jpg" width="100%" /> |
+| <img src="./input/person.jpg" width="100%" /> | <img src="./output/glow_b/person.jpg" width="100%" /> |
+| <img src="./input/romanesco.jpg" width="100%" /> | <img src="./output/glow_b/romanesco.jpg" width="100%" /> |
+| <img src="./input/small_keyboard.jpg" width="100%" /> | <img src="./output/glow_b/small_keyboard.jpg" width="100%" /> |
+| <img src="./input/strange_sphere.jpg" width="100%" /> | <img src="./output/glow_b/strange_sphere.jpg" width="100%" /> |
+| <img src="./input/teal_fractal.jpg" width="100%" /> | <img src="./output/glow_b/teal_fractal.jpg" width="100%" /> |
+| <img src="./input/voxel_cube.jpg" width="100%" /> | <img src="./output/glow_b/voxel_cube.jpg" width="100%" /> |
+| <img src="./input/wavy_background.jpg" width="100%" /> | <img src="./output/glow_b/wavy_background.jpg" width="100%" /> |
+| <img src="./input/windows11_background.jpg" width="100%" /> | <img src="./output/glow_b/windows11_background.jpg" width="100%" /> |
+</details>
+
+<div id="kernel-glow_g"></div>
+<details>
+<summary><strong>Kernel: glow_g</strong></summary>
+
+| Original | Processed (glow_g) |
+| :------: | :-------: |
+| <img src="./input/abstract_shape.jpg" width="100%" /> | <img src="./output/glow_g/abstract_shape.jpg" width="100%" /> |
+| <img src="./input/arrows_up.jpg" width="100%" /> | <img src="./output/glow_g/arrows_up.jpg" width="100%" /> |
+| <img src="./input/building_windows.jpg" width="100%" /> | <img src="./output/glow_g/building_windows.jpg" width="100%" /> |
+| <img src="./input/cyan_fractal.jpg" width="100%" /> | <img src="./output/glow_g/cyan_fractal.jpg" width="100%" /> |
+| <img src="./input/geometric_shapes.jpg" width="100%" /> | <img src="./output/glow_g/geometric_shapes.jpg" width="100%" /> |
+| <img src="./input/grey_fractal.jpg" width="100%" /> | <img src="./output/glow_g/grey_fractal.jpg" width="100%" /> |
+| <img src="./input/lone_coffe.jpg" width="100%" /> | <img src="./output/glow_g/lone_coffe.jpg" width="100%" /> |
+| <img src="./input/lone_lamp.jpg" width="100%" /> | <img src="./output/glow_g/lone_lamp.jpg" width="100%" /> |
+| <img src="./input/lone_leaf.jpg" width="100%" /> | <img src="./output/glow_g/lone_leaf.jpg" width="100%" /> |
+| <img src="./input/milky_way.jpg" width="100%" /> | <img src="./output/glow_g/milky_way.jpg" width="100%" /> |
+| <img src="./input/only_blue.jpg" width="100%" /> | <img src="./output/glow_g/only_blue.jpg" width="100%" /> |
+| <img src="./input/pedestrian_crossing.jpg" width="100%" /> | <img src="./output/glow_g/pedestrian_crossing.jpg" width="100%" /> |
+| <img src="./input/person.jpg" width="100%" /> | <img src="./output/glow_g/person.jpg" width="100%" /> |
+| <img src="./input/romanesco.jpg" width="100%" /> | <img src="./output/glow_g/romanesco.jpg" width="100%" /> |
+| <img src="./input/small_keyboard.jpg" width="100%" /> | <img src="./output/glow_g/small_keyboard.jpg" width="100%" /> |
+| <img src="./input/strange_sphere.jpg" width="100%" /> | <img src="./output/glow_g/strange_sphere.jpg" width="100%" /> |
+| <img src="./input/teal_fractal.jpg" width="100%" /> | <img src="./output/glow_g/teal_fractal.jpg" width="100%" /> |
+| <img src="./input/voxel_cube.jpg" width="100%" /> | <img src="./output/glow_g/voxel_cube.jpg" width="100%" /> |
+| <img src="./input/wavy_background.jpg" width="100%" /> | <img src="./output/glow_g/wavy_background.jpg" width="100%" /> |
+| <img src="./input/windows11_background.jpg" width="100%" /> | <img src="./output/glow_g/windows11_background.jpg" width="100%" /> |
+</details>
+
+<div id="kernel-glow_r"></div>
+<details>
+<summary><strong>Kernel: glow_r</strong></summary>
+
+| Original | Processed (glow_r) |
+| :------: | :-------: |
+| <img src="./input/abstract_shape.jpg" width="100%" /> | <img src="./output/glow_r/abstract_shape.jpg" width="100%" /> |
+| <img src="./input/arrows_up.jpg" width="100%" /> | <img src="./output/glow_r/arrows_up.jpg" width="100%" /> |
+| <img src="./input/building_windows.jpg" width="100%" /> | <img src="./output/glow_r/building_windows.jpg" width="100%" /> |
+| <img src="./input/cyan_fractal.jpg" width="100%" /> | <img src="./output/glow_r/cyan_fractal.jpg" width="100%" /> |
+| <img src="./input/geometric_shapes.jpg" width="100%" /> | <img src="./output/glow_r/geometric_shapes.jpg" width="100%" /> |
+| <img src="./input/grey_fractal.jpg" width="100%" /> | <img src="./output/glow_r/grey_fractal.jpg" width="100%" /> |
+| <img src="./input/lone_coffe.jpg" width="100%" /> | <img src="./output/glow_r/lone_coffe.jpg" width="100%" /> |
+| <img src="./input/lone_lamp.jpg" width="100%" /> | <img src="./output/glow_r/lone_lamp.jpg" width="100%" /> |
+| <img src="./input/lone_leaf.jpg" width="100%" /> | <img src="./output/glow_r/lone_leaf.jpg" width="100%" /> |
+| <img src="./input/milky_way.jpg" width="100%" /> | <img src="./output/glow_r/milky_way.jpg" width="100%" /> |
+| <img src="./input/only_blue.jpg" width="100%" /> | <img src="./output/glow_r/only_blue.jpg" width="100%" /> |
+| <img src="./input/pedestrian_crossing.jpg" width="100%" /> | <img src="./output/glow_r/pedestrian_crossing.jpg" width="100%" /> |
+| <img src="./input/person.jpg" width="100%" /> | <img src="./output/glow_r/person.jpg" width="100%" /> |
+| <img src="./input/romanesco.jpg" width="100%" /> | <img src="./output/glow_r/romanesco.jpg" width="100%" /> |
+| <img src="./input/small_keyboard.jpg" width="100%" /> | <img src="./output/glow_r/small_keyboard.jpg" width="100%" /> |
+| <img src="./input/strange_sphere.jpg" width="100%" /> | <img src="./output/glow_r/strange_sphere.jpg" width="100%" /> |
+| <img src="./input/teal_fractal.jpg" width="100%" /> | <img src="./output/glow_r/teal_fractal.jpg" width="100%" /> |
+| <img src="./input/voxel_cube.jpg" width="100%" /> | <img src="./output/glow_r/voxel_cube.jpg" width="100%" /> |
+| <img src="./input/wavy_background.jpg" width="100%" /> | <img src="./output/glow_r/wavy_background.jpg" width="100%" /> |
+| <img src="./input/windows11_background.jpg" width="100%" /> | <img src="./output/glow_r/windows11_background.jpg" width="100%" /> |
 </details>
 
 <div id="kernel-identity"></div>
@@ -441,4 +528,4 @@ Implementation of a convolution algorithm in C++ with the intention of using it 
 </details>
 
 ---
-*Readme generated on mié 18 feb 2026 18:17:27 CET*
+*Readme generated on jue 19 feb 2026 23:19:19 CET*
