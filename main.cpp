@@ -1,11 +1,53 @@
 #include <vector>
+#include <limits>
 #include <concepts>
 #include <iostream>
 #include <algorithm>
 #include <functional>
 #include <filesystem>
+
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+
+// Force lib to be memory aligned
+#ifdef STB_IMAGE_IMPLEMENTATION
+    #ifdef ALIGNED_ALLOCATION
+        #include <cstdlib>
+        #include <cstring>
+
+        // Memory-aligned realloc implementation
+        inline void* aligned_realloc(void* ptr, size_t new_size, size_t alignment) {
+            if (new_size == 0) { std::free(ptr); return nullptr; }
+            // Reserve new aligned block
+            void* new_ptr = std::aligned_alloc(alignment, (new_size + alignment - 1) & ~(alignment - 1));
+            if (!new_ptr) return nullptr;
+            if (ptr) {
+                // We can safely assume that reallocations are always to bigger sizes
+                std::memcpy(new_ptr, ptr, new_size);
+                std::free(ptr);
+            } return new_ptr;
+        }
+
+        // Configure STB library to use alignead allocation
+        #define STBI_MALLOC(sz)           std::aligned_alloc(64, (sz + 63) & ~63)
+        #define STBI_REALLOC(p, newsz)    aligned_realloc(p, newsz, 64)
+        #define STBI_FREE(p)              std::free(p)
+    #endif
+#endif
+
+// Disable asserts to optimize further
+#ifdef NO_THROWS
+    #define STBI_ASSERT(x)
+#endif
+
+// Disable certain implementations
+#define STBI_NO_PSD
+#define STBI_NO_TGA
+#define STBI_NO_GIF
+#define STBI_NO_HDR
+#define STBI_NO_PIC
+#define STBI_NO_PNM
+
 #include "stb_image.h"
 #include "stb_image_write.h"
 
@@ -15,13 +57,14 @@
     #define NOEXCEPT_THROWS noexcept
     #define NOEXCEPT_CHECKBOUNDS noexcept
 #else
-    #ifdef NO_THROWS
+    #define NOEXCEPT
+    #ifdef NO_THROWS // Disable all throws in the code
         #define NOEXCEPT_THROWS noexcept
     #else
-        #undef NOEXCEPT_THROWS
+        #define NOEXCEPT_THROWS
     #endif
-    #ifdef CHECK_BOUNDS
-        #undef NOEXCEPT_CHECKBOUNDS
+    #ifdef CHECK_BOUNDS // Enable checking bounds on access
+        #define NOEXCEPT_CHECKBOUNDS
     #else
         #define NOEXCEPT_CHECKBOUNDS noexcept
     #endif
@@ -50,6 +93,28 @@
     #define OUTPUT_DIRECTORY "./output/"
 #endif
 
+// Macro for measuring the time that some instructions take to execute
+#define BENCHMARK_CHRONO(name, ...) \
+    do { \
+        auto _bench_start = std::chrono::high_resolution_clock::now(); \
+        __VA_ARGS__; \
+        asm volatile("" ::: "memory"); \
+        auto _bench_end = std::chrono::high_resolution_clock::now(); \
+        std::chrono::duration<double, std::micro> _bench_dur = (_bench_end - _bench_start); \
+        std::cout << "[CHRONO] " << name << " -> " << _bench_dur.count() << " us\n"; \
+    } while(0)
+
+// Macro for measuring the CPU cycles some instructions take to execute
+#define BENCHMARK_CYCLES(name, ...) \
+    do { \
+        unsigned int _bench_aux; \
+        uint64_t _bench_start = __rdtscp(&_bench_aux); \
+        __VA_ARGS__; \
+        asm volatile("" ::: "memory"); \
+        uint64_t _bench_end = __rdtscp(&_bench_aux); \
+        std::cout << "[CYCLES] " << name << " -> " << (_bench_end - _bench_start) << " cycles\n"; \
+    } while(0)
+
 /**
 * @brief Base templated class representing a 3D tensor (Width x Height x Channels).
 * * Manages raw memory manually using a flat array. Supports move semantics
@@ -71,7 +136,11 @@ class Tensor {
         */
         virtual ~Tensor() noexcept {
             if (this->data != nullptr) {
-                std::free(this->data);
+                #ifdef ALIGNED_ALLOCATION
+                    std::free(this->data);
+                #else
+                    delete[] this->data;
+                #endif
                 this->data = nullptr;
             }
         }
@@ -179,10 +248,10 @@ class Tensor {
             } return is;
         }
 
-        inline const unsigned int w() const noexcept { return this->width; }
-        inline const unsigned int h() const noexcept { return this->height; }
-        inline const unsigned int c() const noexcept { return this->channels; }
-        inline const unsigned int len() const noexcept { return this->length; }
+        inline unsigned int w() const noexcept { return this->width; }
+        inline unsigned int h() const noexcept { return this->height; }
+        inline unsigned int c() const noexcept { return this->channels; }
+        inline unsigned int len() const noexcept { return this->length; }
 
     protected:
 
@@ -195,18 +264,24 @@ class Tensor {
         * Initializes memory to zero.
         */
         inline void allocate(const unsigned int size) NOEXCEPT {
-            if (this->data) { std::free(this->data); }
-            // Aligment to 64 bytes for improving speed
-            const size_t alignment = 64;
-            const size_t total_bytes = size * sizeof(T);
-            // Padding to make size multiple of aligment
-            const size_t padded_size = (total_bytes + alignment - 1) & ~(alignment - 1);
-            // Aligment memory allocation
-            this->data = static_cast<T*>(std::aligned_alloc(alignment, padded_size));
-            // Initialize to zero
-            if (this->data) {
-                std::fill_n(this->data, size, static_cast<T>(0));
-            }
+            #ifdef ALIGNED_ALLOCATION
+                if (this->data) { std::free(this->data); }
+                // Aligment to 64 bytes for improving speed
+                const size_t alignment = 64;
+                const size_t total_bytes = size * sizeof(T);
+                // Padding to make size multiple of aligment
+                const size_t padded_size = (total_bytes + alignment - 1) & ~(alignment - 1);
+                // Aligment memory allocation
+                this->data = static_cast<T*>(std::aligned_alloc(alignment, padded_size));
+                // Initialize to zero
+                if (this->data) {
+                    std::fill_n(this->data, size, static_cast<T>(0));
+                }
+            #else
+                if (this->data) { delete[] this->data; }
+                // Allocate memory for the data initialized to zero
+                this->data = new T[size]();
+            #endif
         }
 };
 
@@ -215,16 +290,16 @@ class Tensor {
 * * Handles loading/saving images via stb_image and specific out-of-bounds
 * access logic (returning padding instead of throwing).
 */
-template <typename T>
-class Image : public Tensor<T> {
+template <typename I>
+class Image : public Tensor<I> {
     public:
 
         /**
         * @brief Constructor for creating an empty blank image.
         */
-        Image(const unsigned int width, const unsigned int height, const unsigned int channels) noexcept : Tensor<T>(width, height, channels), is_stbi(false) {
+        Image(const unsigned int width, const unsigned int height, const unsigned int channels) noexcept : Tensor<I>(width, height, channels), is_stbi(false) {
             // Allocate memory for the data initialized to zero
-            Tensor<T>::allocate(this->length);
+            Tensor<I>::allocate(this->length);
         }
 
         /**
@@ -232,17 +307,22 @@ class Image : public Tensor<T> {
         * @param path The filesystem path to the image.
         * @throws std::runtime_error If loading fails.
         */
-        Image(const std::string& path) NOEXCEPT_THROWS : Tensor<unsigned char>(0, 0, 0), is_stbi(true) {
+        Image(const std::string& path) NOEXCEPT_THROWS requires std::same_as<I, float> || std::same_as<I, unsigned char> : Tensor<I>(0, 0, 0), is_stbi(true) {
             int w, h, c;
-            // Load image using external library
-            unsigned char* tdata = stbi_load(path.c_str(), &w, &h, &c, MIN_CHANNELS);
+            // Two ways of doing things depending on decimals or not
+            if constexpr (std::same_as<I, float>) {
+                // Load image using external library
+                this->data = stbi_loadf(path.c_str(), &w, &h, &c, MIN_CHANNELS);
+            } else {
+                // Load image using external library
+                this->data = stbi_load(path.c_str(), &w, &h, &c, MIN_CHANNELS);
+            }
             // Throw error if failed to load image
             #ifndef NO_THROWS
-                if (tdata == NULL) { throw std::runtime_error("Failed to load image: " + path); }
+                if (this->data == NULL) { throw std::runtime_error("Failed to load image: " + path); }
             #endif
-            // Set properties
-            this->data = tdata;
-            this->width = w; this->height = h; this->channels = std::max(c, MIN_CHANNELS);
+            // Store properties
+            this->width = static_cast<unsigned int>(w); this->height = static_cast<unsigned int>(h); this->channels = static_cast<unsigned int>(c);
             // Compute length
             this->length = (this->width * this->height * this->channels);
         }
@@ -263,10 +343,10 @@ class Image : public Tensor<T> {
         * @brief Move constructor specific to Image.
         * Copies the 'is_stbi' flag in addition to moving the Tensor data.
         */
-        Image(Image<T>&& o) noexcept : Tensor<T>(std::move(o)), is_stbi(o.is_stbi) {}
+        Image(Image<I>&& o) noexcept : Tensor<I>(std::move(o)), is_stbi(o.is_stbi) {}
 
         // Inherit operator
-        using Tensor<T>::operator[];
+        using Tensor<I>::operator[];
 
         /**
         * @brief Safe read-only access for convolution.
@@ -274,50 +354,54 @@ class Image : public Tensor<T> {
         * if coordinates are out of bounds, allowing the convolution kernel to
         * slide over the edges of the image without crashing.
         */
-        inline const T& operator[](const unsigned int x, const unsigned int y, const unsigned int c) const noexcept {
+        inline const I& operator[](const unsigned int x, const unsigned int y, const unsigned int c) const noexcept {
             // Return 0 Padding when out of bounds
             #ifdef PADDED_ACCESS
-                if ((x >= this->width) || (y >= this->height)) { return Image<T>::padding; }
+                if ((x >= this->width) || (y >= this->height)) { return Image<I>::padding; }
             #endif
             // Get char at (x, y) for channel c
-            return Tensor<T>::operator[](x, y, c);
+            return Tensor<I>::operator[](x, y, c);
         }
 
         /**
         * @brief Writes the current image data to a file (PNG format).
         */
-        void write(const std::string& path) const NOEXCEPT {
-            stbi_write_png(path.c_str(), this->width, this->height, this->channels, this->data, 0);
+        void write(const std::string& path) const NOEXCEPT requires std::same_as<I, float> || std::same_as<I, unsigned char> {
+            if constexpr (std::same_as<I, float>) {
+                stbi_write_hdr(path.c_str(), this->width, this->height, this->channels, this->data);
+            } else {
+                stbi_write_png(path.c_str(), this->width, this->height, this->channels, this->data, 0);
+            }
         }
 
     private:
 
-        static constexpr T padding = 0;
+        static constexpr I padding = 0;
         const bool is_stbi; // Flag to track if memory is owned by stbi (malloc) or new
 };
 
 /**
 * @brief Represents a convolution kernel (filter). Inherits from Tensor<double>.
 */
-template <typename T>
-class Kernel : public Tensor<T> {
+template <typename K>
+class Kernel : public Tensor<K> {
     public:
 
         /**
         * @brief Constructor for creating an empty blank kernel.
         */
-        Kernel(const unsigned int width, const unsigned int height, const unsigned int channels) noexcept : Tensor<T>(width, height, channels) {
+        Kernel(const unsigned int width, const unsigned int height, const unsigned int channels) noexcept : Tensor<K>(width, height, channels) {
             // Allocate memory for the data initialized to zero
-            Tensor<T>::allocate(this->length);
+            Tensor<K>::allocate(this->length);
         }
 
         /**
         * @brief Move constructor specific to Kernel.
         */
-        Kernel(Kernel<T>&& o) noexcept : Tensor<T>(std::move(o)) {}
+        Kernel(Kernel<K>&& o) noexcept : Tensor<K>(std::move(o)) {}
 
         // Inherit operators
-        using Tensor<T>::operator[];
+        using Tensor<K>::operator[];
 
         /**
         * @brief Sets the kernel values using a 2D initializer list.
@@ -325,34 +409,34 @@ class Kernel : public Tensor<T> {
         * * Usage: kernel.set({{0,-1,0}, {-1,4,-1}, {0,-1,0}});
         * @throws std::invalid_argument If matrix dimension doesn't matches kernel's.
         */
-        void set(const std::initializer_list<std::initializer_list<T>>& matrix) NOEXCEPT_THROWS {
+        void set(const std::initializer_list<std::initializer_list<K>>& matrix) NOEXCEPT_THROWS {
             #ifndef NO_THROWS
                 // Check if dimensions match
                 if (matrix.size() != this->height || matrix.begin()->size() != this->width) {
                     throw std::invalid_argument("Matrix size does not match kernel dimensions");
                 }
             #endif
-            T* ptr = this->data;
+            K* ptr = this->data;
             const unsigned int c = this->channels;
             for (const auto& row : matrix) {
-                for (const T v : row) {
+                for (const K v : row) {
                     std::fill_n(ptr, c, v);
                     ptr+=c;
                 }
             }
         }
 
-        inline const unsigned int hw() const noexcept { return (this->width/2); }
-        inline const unsigned int hh() const noexcept { return (this->height/2); }
+        inline unsigned int hw() const noexcept { return (this->width/2); }
+        inline unsigned int hh() const noexcept { return (this->height/2); }
 
         /**
         * @brief Identity Kernel (1x1).
         * Does not modify the image.
         */
-        [[nodiscard]] static Kernel<T> identity(const unsigned int channels = 3) NOEXCEPT_THROWS {
-            Kernel<T> k(1, 1, channels);
+        [[nodiscard]] static Kernel<K> identity(const unsigned int channels = 3) NOEXCEPT_THROWS {
+            Kernel<K> k(1, 1, channels);
             for (unsigned int s = 0; s < k.length; ++s) {
-                k[s] = static_cast<T>(1);
+                k[s] = static_cast<K>(1);
             } return k;
         }
 
@@ -362,13 +446,13 @@ class Kernel : public Tensor<T> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        [[nodiscard]] static Kernel<T> box_blur(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+        [[nodiscard]] static Kernel<K> box_blur(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
             #ifndef NO_THROWS
                 if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
             #endif
-            Kernel<T> k(size, size, channels);
+            Kernel<K> k(size, size, channels);
             // Fill with 1. The convolution will divide by the total sum.
-            for(unsigned int i=0; i < k.len(); ++i) { k.data[i] = static_cast<T>(1); }
+            for(unsigned int i=0; i < k.len(); ++i) { k.data[i] = static_cast<K>(1); }
             return k;
         }
 
@@ -379,29 +463,29 @@ class Kernel : public Tensor<T> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        [[nodiscard]] static Kernel<T> gaussian(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<T> {
+        [[nodiscard]] static Kernel<K> gaussian(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<K> {
             #ifndef NO_THROWS
                 if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
             #endif
-            Kernel<T> k(size, size, channels);
+            Kernel<K> k(size, size, channels);
             // Compute sigma assuming the kernel radius covers roughly 3 sigma.
-            const T sigma = std::max(static_cast<T>(1), size / static_cast<T>(6));
-            const T two_sigma_sq = static_cast<T>(1) / (static_cast<T>(2) * sigma * sigma);
-            const int radius = size / 2;
+            const K sigma = std::max(static_cast<K>(1), size / static_cast<K>(6));
+            const K two_sigma_sq = static_cast<K>(1) / (static_cast<K>(2) * sigma * sigma);
+            const unsigned int radius = size / 2;
             // Precompute Gaussian values
-            std::vector<T> gaussian_vs(size);
-            for (int i = 0; i < size; ++i) {
+            std::vector<K> gaussian_vs(size);
+            for (unsigned int i = 0; i < size; ++i) {
                 const int x = (i - radius);
-                gaussian_vs[i] = static_cast<T>(std::exp(-(x * x) * two_sigma_sq));
+                gaussian_vs[i] = static_cast<K>(std::exp(-(x * x) * two_sigma_sq));
             }
             // Get raw pointer
-            T* ptr = k.data;
+            K* ptr = k.data;
             for (unsigned int y = 0; y < size; ++y) {
                 // Cache the Y component of the gaussian
-                const T v_y = gaussian_vs[y];
+                const K v_y = gaussian_vs[y];
                 for (unsigned int x = 0; x < size; ++x) {
                     // Combine X and Y components (exp(a+b) = exp(a)*exp(b))
-                    const T v = (v_y * gaussian_vs[x]);
+                    const K v = (v_y * gaussian_vs[x]);
                     std::fill_n(ptr, channels, v);
                     ptr += channels;
                 }
@@ -412,12 +496,12 @@ class Kernel : public Tensor<T> {
         * @brief Sharpen (3x3).
         * Increases contrast between adjacent pixels.
         */
-        [[nodiscard]] static Kernel<T> sharpen(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<T> || std::signed_integral<T> {
-            Kernel<T> k(3, 3, channels);
+        [[nodiscard]] static Kernel<K> sharpen(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<K> || std::signed_integral<K> {
+            Kernel<K> k(3, 3, channels);
             k.set({
-                { static_cast<T>(0), static_cast<T>(-1),  static_cast<T>(0)},
-                {static_cast<T>(-1),  static_cast<T>(5), static_cast<T>(-1)},
-                { static_cast<T>(0), static_cast<T>(-1),  static_cast<T>(0)}
+                { static_cast<K>(0), static_cast<K>(-1),  static_cast<K>(0)},
+                {static_cast<K>(-1),  static_cast<K>(5), static_cast<K>(-1)},
+                { static_cast<K>(0), static_cast<K>(-1),  static_cast<K>(0)}
             }); return k;
         }
 
@@ -425,14 +509,14 @@ class Kernel : public Tensor<T> {
         * @brief Sharpen (5x5).
         * A more aggressive sharpening filter that accounts for a wider area.
         */
-        [[nodiscard]] static Kernel<T> sharpen5(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<T> || std::signed_integral<T> {
-            Kernel<T> k(5, 5, channels);
+        [[nodiscard]] static Kernel<K> sharpen5(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<K> || std::signed_integral<K> {
+            Kernel<K> k(5, 5, channels);
             k.set({
-                {static_cast<T>(-1), static_cast<T>(-1), static_cast<T>(-1), static_cast<T>(-1), static_cast<T>(-1)},
-                {static_cast<T>(-1),  static_cast<T>(2),  static_cast<T>(2),  static_cast<T>(2), static_cast<T>(-1)},
-                {static_cast<T>(-1),  static_cast<T>(2),  static_cast<T>(8),  static_cast<T>(2), static_cast<T>(-1)},
-                {static_cast<T>(-1),  static_cast<T>(2),  static_cast<T>(2),  static_cast<T>(2), static_cast<T>(-1)},
-                {static_cast<T>(-1), static_cast<T>(-1), static_cast<T>(-1), static_cast<T>(-1), static_cast<T>(-1)}
+                {static_cast<K>(-1), static_cast<K>(-1), static_cast<K>(-1), static_cast<K>(-1), static_cast<K>(-1)},
+                {static_cast<K>(-1),  static_cast<K>(2),  static_cast<K>(2),  static_cast<K>(2), static_cast<K>(-1)},
+                {static_cast<K>(-1),  static_cast<K>(2),  static_cast<K>(8),  static_cast<K>(2), static_cast<K>(-1)},
+                {static_cast<K>(-1),  static_cast<K>(2),  static_cast<K>(2),  static_cast<K>(2), static_cast<K>(-1)},
+                {static_cast<K>(-1), static_cast<K>(-1), static_cast<K>(-1), static_cast<K>(-1), static_cast<K>(-1)}
             }); return k;
         }
 
@@ -440,12 +524,12 @@ class Kernel : public Tensor<T> {
         * @brief Laplacian (3x3).
         * Standard omnidirectional edge detection.
         */
-        [[nodiscard]] static Kernel<T> laplacian(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<T> || std::signed_integral<T> {
-            Kernel<T> k(3, 3, channels);
+        [[nodiscard]] static Kernel<K> laplacian(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<K> || std::signed_integral<K> {
+            Kernel<K> k(3, 3, channels);
             k.set({
-                { static_cast<T>(0), static_cast<T>(-1),  static_cast<T>(0)},
-                {static_cast<T>(-1),  static_cast<T>(4), static_cast<T>(-1)},
-                { static_cast<T>(0), static_cast<T>(-1),  static_cast<T>(0)}
+                { static_cast<K>(0), static_cast<K>(-1),  static_cast<K>(0)},
+                {static_cast<K>(-1),  static_cast<K>(4), static_cast<K>(-1)},
+                { static_cast<K>(0), static_cast<K>(-1),  static_cast<K>(0)}
             }); return k;
         }
 
@@ -454,14 +538,14 @@ class Kernel : public Tensor<T> {
         * Combines Gaussian smoothing with Laplacian edge detection.
         * Less sensitive to noise than the standard 3x3 Laplacian.
         */
-        [[nodiscard]] static Kernel<T> laplacian5(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<T> || std::signed_integral<T> {
-            Kernel<T> k(5, 5, channels);
+        [[nodiscard]] static Kernel<K> laplacian5(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<K> || std::signed_integral<K> {
+            Kernel<K> k(5, 5, channels);
             k.set({
-                { static_cast<T>(0),  static_cast<T>(0), static_cast<T>(-1),  static_cast<T>(0),  static_cast<T>(0)},
-                { static_cast<T>(0), static_cast<T>(-1), static_cast<T>(-2), static_cast<T>(-1),  static_cast<T>(0)},
-                {static_cast<T>(-1), static_cast<T>(-2), static_cast<T>(16), static_cast<T>(-2), static_cast<T>(-1)},
-                { static_cast<T>(0), static_cast<T>(-1), static_cast<T>(-2), static_cast<T>(-1),  static_cast<T>(0)},
-                { static_cast<T>(0),  static_cast<T>(0), static_cast<T>(-1),  static_cast<T>(0),  static_cast<T>(0)}
+                { static_cast<K>(0),  static_cast<K>(0), static_cast<K>(-1),  static_cast<K>(0),  static_cast<K>(0)},
+                { static_cast<K>(0), static_cast<K>(-1), static_cast<K>(-2), static_cast<K>(-1),  static_cast<K>(0)},
+                {static_cast<K>(-1), static_cast<K>(-2), static_cast<K>(16), static_cast<K>(-2), static_cast<K>(-1)},
+                { static_cast<K>(0), static_cast<K>(-1), static_cast<K>(-2), static_cast<K>(-1),  static_cast<K>(0)},
+                { static_cast<K>(0),  static_cast<K>(0), static_cast<K>(-1),  static_cast<K>(0),  static_cast<K>(0)}
             });
             return k;
         }
@@ -470,12 +554,12 @@ class Kernel : public Tensor<T> {
         * @brief Sobel X (3x3).
         * Detects vertical lines, meaning changes in horizontal intensity.
         */
-        [[nodiscard]] static Kernel<T> sobel_x(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<T> || std::signed_integral<T> {
-            Kernel<T> k(3, 3, channels);
+        [[nodiscard]] static Kernel<K> sobel_x(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<K> || std::signed_integral<K> {
+            Kernel<K> k(3, 3, channels);
             k.set({
-                {static_cast<T>(-1), static_cast<T>(0), static_cast<T>(1)},
-                {static_cast<T>(-2), static_cast<T>(0), static_cast<T>(2)},
-                {static_cast<T>(-1), static_cast<T>(0), static_cast<T>(1)}
+                {static_cast<K>(-1), static_cast<K>(0), static_cast<K>(1)},
+                {static_cast<K>(-2), static_cast<K>(0), static_cast<K>(2)},
+                {static_cast<K>(-1), static_cast<K>(0), static_cast<K>(1)}
             }); return k;
         }
 
@@ -483,12 +567,12 @@ class Kernel : public Tensor<T> {
         * @brief Sobel Y (3x3).
         * Detects horizontal lines, meaning changes in vertical intensity.
         */
-        [[nodiscard]] static Kernel<T> sobel_y(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<T> || std::signed_integral<T> {
-            Kernel<T> k(3, 3, channels);
+        [[nodiscard]] static Kernel<K> sobel_y(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<K> || std::signed_integral<K> {
+            Kernel<K> k(3, 3, channels);
             k.set({
-                {static_cast<T>(-1), static_cast<T>(-2), static_cast<T>(-1)},
-                { static_cast<T>(0),  static_cast<T>(0),  static_cast<T>(0)},
-                { static_cast<T>(1),  static_cast<T>(2),  static_cast<T>(1)}
+                {static_cast<K>(-1), static_cast<K>(-2), static_cast<K>(-1)},
+                { static_cast<K>(0),  static_cast<K>(0),  static_cast<K>(0)},
+                { static_cast<K>(1),  static_cast<K>(2),  static_cast<K>(1)}
             }); return k;
         }
 
@@ -496,12 +580,12 @@ class Kernel : public Tensor<T> {
         * @brief Emboss (3x3).
         * Simulates a 3D relief effect by highlighting edges in a specific direction.
         */
-        [[nodiscard]] static Kernel<T> emboss(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<T> || std::signed_integral<T> {
-            Kernel<T> k(3, 3, channels);
+        [[nodiscard]] static Kernel<K> emboss(const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<K> || std::signed_integral<K> {
+            Kernel<K> k(3, 3, channels);
             k.set({
-                {static_cast<T>(-2), static_cast<T>(-1),  static_cast<T>(0)},
-                {static_cast<T>(-1),  static_cast<T>(1),  static_cast<T>(1)},
-                { static_cast<T>(0),  static_cast<T>(1),  static_cast<T>(2)}
+                {static_cast<K>(-2), static_cast<K>(-1),  static_cast<K>(0)},
+                {static_cast<K>(-1),  static_cast<K>(1),  static_cast<K>(1)},
+                { static_cast<K>(0),  static_cast<K>(1),  static_cast<K>(2)}
             }); return k;
         }
 
@@ -511,12 +595,12 @@ class Kernel : public Tensor<T> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        [[nodiscard]] static Kernel<T> motion_blur_x(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+        [[nodiscard]] static Kernel<K> motion_blur_x(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
             #ifndef NO_THROWS
                 if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
             #endif
-            Kernel<T> k(size, 1, channels);
-            for(unsigned int i=0; i < k.len(); ++i) { k.data[i] = static_cast<T>(1); }
+            Kernel<K> k(size, 1, channels);
+            for(unsigned int i=0; i < k.len(); ++i) { k.data[i] = static_cast<K>(1); }
             return k;
         }
 
@@ -526,12 +610,12 @@ class Kernel : public Tensor<T> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        [[nodiscard]] static Kernel<T> motion_blur_y(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+        [[nodiscard]] static Kernel<K> motion_blur_y(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
             #ifndef NO_THROWS
                 if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
             #endif
-            Kernel<T> k(1, size, channels);
-            for(unsigned int i=0; i < k.len(); ++i) { k.data[i] = static_cast<T>(1); }
+            Kernel<K> k(1, size, channels);
+            for(unsigned int i=0; i < k.len(); ++i) { k.data[i] = static_cast<K>(1); }
             return k;
         }
 
@@ -541,14 +625,14 @@ class Kernel : public Tensor<T> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        [[nodiscard]] static Kernel<T> glitch_x(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+        [[nodiscard]] static Kernel<K> glitch_x(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
             #ifndef NO_THROWS
                 if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
             #endif
-            Kernel<T> k(size, 1, channels);
-            k[0, 0, 0] = static_cast<T>(1); k[(k.width/2), 0, 1] = static_cast<T>(1); k[(k.width-1), 0, 2] = static_cast<T>(1);
+            Kernel<K> k(size, 1, channels);
+            k[0, 0, 0] = static_cast<K>(1); k[(k.width/2), 0, 1] = static_cast<K>(1); k[(k.width-1), 0, 2] = static_cast<K>(1);
             for (unsigned int c = 3; c < channels; ++c) {
-                k[(k.width/2), 0, c] = static_cast<T>(1);
+                k[(k.width/2), 0, c] = static_cast<K>(1);
             } return k;
         }
 
@@ -558,14 +642,14 @@ class Kernel : public Tensor<T> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        [[nodiscard]] static Kernel<T> glitch_y(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+        [[nodiscard]] static Kernel<K> glitch_y(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
             #ifndef NO_THROWS
                 if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
             #endif
-            Kernel<T> k(1, size, channels);
-            k[0, 0, 0] = static_cast<T>(1); k[0, (k.height/2), 1] = static_cast<T>(1); k[0, (k.height-1), 2] = static_cast<T>(1);
+            Kernel<K> k(1, size, channels);
+            k[0, 0, 0] = static_cast<K>(1); k[0, (k.height/2), 1] = static_cast<K>(1); k[0, (k.height-1), 2] = static_cast<K>(1);
             for (unsigned int c = 3; c < channels; ++c) {
-                k[0, (k.height/2), c] = static_cast<T>(1);
+                k[0, (k.height/2), c] = static_cast<K>(1);
             } return k;
         }
 
@@ -575,12 +659,12 @@ class Kernel : public Tensor<T> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        [[nodiscard]] static Kernel<T> ghost(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
+        [[nodiscard]] static Kernel<K> ghost(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
             #ifndef NO_THROWS
                 if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
             #endif
-            Kernel<T> k(size, size, channels);
-            k[0] = static_cast<T>(1); k[k.length - 1] = static_cast<T>(1);
+            Kernel<K> k(size, size, channels);
+            k[0] = static_cast<K>(1); k[k.length - 1] = static_cast<K>(1);
             return k;
         }
 
@@ -591,15 +675,15 @@ class Kernel : public Tensor<T> {
         * @param channel Channel to not apply blur effect to.
         * @throws std::invalid_argument If size isn't odd.
         */
-        [[nodiscard]] static Kernel<T> glow(const unsigned int size, const unsigned int channel, const unsigned int channels = 3) NOEXCEPT_THROWS {
+        [[nodiscard]] static Kernel<K> glow(const unsigned int size, const unsigned int channel, const unsigned int channels = 3) NOEXCEPT_THROWS {
             #ifndef NO_THROWS
                 if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
             #endif
-            Kernel<T> k(size, size, channels);
+            Kernel<K> k(size, size, channels);
             for (unsigned int c = 0; c < k.channels; ++c) {
                 if (c == channel) { continue; }
                 for (unsigned int s = 0; s < k.length; s+=k.channels) {
-                    k[s + c] = static_cast<T>(1);
+                    k[s + c] = static_cast<K>(1);
                 }
             } return k;
         }
@@ -631,14 +715,14 @@ class Kernel : public Tensor<T> {
 */
 #define VECTORIZABLE_CONVO 2
 
-template <typename T, typename K>
-requires (std::integral<T> || std::floating_point<T>) && (std::integral<K> || std::floating_point<K>)
-Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
+template <typename I, typename K>
+requires (std::integral<I> || std::floating_point<I>) && (std::integral<K> || std::floating_point<K>)
+Image<I> convolute(const Image<I>& image, const Kernel<K>& kernel) NOEXCEPT {
     #ifdef VECTORIZED_CONVO
     // Need to implement this
     #elif defined(VECTORIZABLE_CONVO)
         // Initialize convolution image
-        Image<T> conv(image.w(), image.h(), image.c());
+        Image<I> conv(image.w(), image.h(), image.c());
         // Specialized algorithm for 3 channels or fallback to slower one for N channels
         switch (image.c()) {
             case 3: {
@@ -666,12 +750,12 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                 // Get image stride accounting for kernel
                 const unsigned int stride = (image.w() - kernel.w()) * 3;
                 // Get image and convo starting pointers
-                T* __restrict c_ptr = &conv[kernel.hw(), kernel.hh(), 0];
-                const T* __restrict i_ptr = &image[kernel.hw(), kernel.hh(), 0];
+                I* __restrict c_ptr = &conv[kernel.hw(), kernel.hh(), 0];
+                const I* __restrict i_ptr = &image[kernel.hw(), kernel.hh(), 0];
                 // Loop until we reach end of image
                 for (; i_ptr < &image[kernel.hw(), image.h() - kernel.hh(), 0]; i_ptr += ((kernel.w() - 1) * 3), c_ptr += ((kernel.w() - 1) * 3)) {
                     // Get row ending pointer
-                    const T* r_ptr = i_ptr + stride + 3;
+                    const I* r_ptr = i_ptr + stride + 3;
                     // Loop until we reach end of image row
                     for (; i_ptr < r_ptr; i_ptr += 3, c_ptr += 3) {
                         // Scalar promotion for buffers
@@ -679,7 +763,7 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                         // Get kernel start pointer
                         const K* __restrict k_ptr = &kernel[0];
                         // Get image start pointer for kernel
-                        const T* __restrict si_ptr = (i_ptr - padding);
+                        const I* __restrict si_ptr = (i_ptr - padding);
                         // Loop through kernel height
                         for (unsigned int ky = 0; ky < kernel.h(); ++ky) {
                             // Loop through kernel width
@@ -692,17 +776,20 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                                 k_ptr += 3; si_ptr += 3;
                             } si_ptr += stride;
                         }
+                        // Get clamp limits depending on the type
+                        K cmin, cmax;
+                        if constexpr (std::floating_point<I>) { cmin = 0.0, cmax = 1.0; } else { cmin = std::numeric_limits<I>::min(), cmax = std::numeric_limits<I>::max(); }
                         // Two ways of doing things depending on decimals or not
                         if constexpr (std::floating_point<K>) {
                             // Fused Normalization and Clamping per channel
-                            c_ptr[0] = static_cast<T>(std::clamp(buf0 * sum0, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[1] = static_cast<T>(std::clamp(buf1 * sum1, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[2] = static_cast<T>(std::clamp(buf2 * sum2, static_cast<K>(0), static_cast<K>(255)));
+                            c_ptr[0] = static_cast<I>(std::clamp(buf0 * sum0, cmin, cmax));
+                            c_ptr[1] = static_cast<I>(std::clamp(buf1 * sum1, cmin, cmax));
+                            c_ptr[2] = static_cast<I>(std::clamp(buf2 * sum2, cmin, cmax));
                         } else {
                             // Fused Normalization and Clamping per channel
-                            c_ptr[0] = static_cast<T>(std::clamp(buf0 / sum0, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[1] = static_cast<T>(std::clamp(buf1 / sum1, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[2] = static_cast<T>(std::clamp(buf2 / sum2, static_cast<K>(0), static_cast<K>(255)));
+                            c_ptr[0] = static_cast<I>(std::clamp(buf0 / sum0, cmin, cmax));
+                            c_ptr[1] = static_cast<I>(std::clamp(buf1 / sum1, cmin, cmax));
+                            c_ptr[2] = static_cast<I>(std::clamp(buf2 / sum2, cmin, cmax));
                         }
                     }
                 } break;
@@ -734,12 +821,12 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                 // Get image stride accounting for kernel
                 const unsigned int stride = (image.w() - kernel.w()) * 4;
                 // Get image and convo starting pointers
-                T* __restrict c_ptr = &conv[kernel.hw(), kernel.hh(), 0];
-                const T* __restrict i_ptr = &image[kernel.hw(), kernel.hh(), 0];
+                I* __restrict c_ptr = &conv[kernel.hw(), kernel.hh(), 0];
+                const I* __restrict i_ptr = &image[kernel.hw(), kernel.hh(), 0];
                 // Loop until we reach end of image
                 for (; i_ptr < &image[kernel.hw(), image.h() - kernel.hh(), 0]; i_ptr += ((kernel.w() - 1) * 4), c_ptr += ((kernel.w() - 1) * 4)) {
                     // Get row ending pointer
-                    const T* r_ptr = i_ptr + stride + 4;
+                    const I* r_ptr = i_ptr + stride + 4;
                     // Loop until we reach end of image row
                     for (; i_ptr < r_ptr; i_ptr += 4, c_ptr += 4) {
                         // Scalar promotion for buffers
@@ -747,7 +834,7 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                         // Get kernel start pointer
                         const K* __restrict k_ptr = &kernel[0];
                         // Get image start pointer for kernel
-                        const T* __restrict si_ptr = (i_ptr - padding);
+                        const I* __restrict si_ptr = (i_ptr - padding);
                         // Loop through kernel height
                         for (unsigned int ky = 0; ky < kernel.h(); ++ky) {
                             // Loop through kernel width
@@ -761,19 +848,22 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                                 k_ptr += 4; si_ptr += 4;
                             } si_ptr += stride;
                         }
+                        // Get clamp limits depending on the type
+                        K cmin, cmax;
+                        if constexpr (std::floating_point<I>) { cmin = 0.0, cmax = 1.0; } else { cmin = std::numeric_limits<I>::min(), cmax = std::numeric_limits<I>::max(); }
                         // Two ways of doing things depending on decimals or not
                         if constexpr (std::floating_point<K>) {
                             // Fused Normalization and Clamping per channel
-                            c_ptr[0] = static_cast<T>(std::clamp(buf0 * sum0, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[1] = static_cast<T>(std::clamp(buf1 * sum1, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[2] = static_cast<T>(std::clamp(buf2 * sum2, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[3] = static_cast<T>(std::clamp(buf3 * sum3, static_cast<K>(0), static_cast<K>(255)));
+                            c_ptr[0] = static_cast<I>(std::clamp(buf0 * sum0, cmin, cmax));
+                            c_ptr[1] = static_cast<I>(std::clamp(buf1 * sum1, cmin, cmax));
+                            c_ptr[2] = static_cast<I>(std::clamp(buf2 * sum2, cmin, cmax));
+                            c_ptr[3] = static_cast<I>(std::clamp(buf3 * sum3, cmin, cmax));
                         } else {
                             // Fused Normalization and Clamping per channel
-                            c_ptr[0] = static_cast<T>(std::clamp(buf0 / sum0, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[1] = static_cast<T>(std::clamp(buf1 / sum1, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[2] = static_cast<T>(std::clamp(buf2 / sum2, static_cast<K>(0), static_cast<K>(255)));
-                            c_ptr[3] = static_cast<T>(std::clamp(buf3 / sum3, static_cast<K>(0), static_cast<K>(255)));
+                            c_ptr[0] = static_cast<I>(std::clamp(buf0 / sum0, cmin, cmax));
+                            c_ptr[1] = static_cast<I>(std::clamp(buf1 / sum1, cmin, cmax));
+                            c_ptr[2] = static_cast<I>(std::clamp(buf2 / sum2, cmin, cmax));
+                            c_ptr[3] = static_cast<I>(std::clamp(buf3 / sum3, cmin, cmax));
                         }
                     }
                 } break;
@@ -807,12 +897,12 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                 // Get image stride accounting for kernel
                 const unsigned int stride = ((image.w() - kernel.w()) * image.c());
                 // Get image and convo starting pointers
-                T* __restrict c_ptr = &conv[kernel.hw(), kernel.hh(), 0];
-                const T* __restrict i_ptr = &image[kernel.hw(), kernel.hh(), 0];
+                I* __restrict c_ptr = &conv[kernel.hw(), kernel.hh(), 0];
+                const I* __restrict i_ptr = &image[kernel.hw(), kernel.hh(), 0];
                 // Loop until we reach end of image
                 for (; i_ptr < &image[kernel.hw(), image.h() - kernel.hh(), 0]; i_ptr+=((kernel.w() - 1)*image.c()), c_ptr+=((kernel.w() - 1)*conv.c())) {
                     // Get row ending pointer
-                    const T* r_ptr = i_ptr + stride + image.c();
+                    const I* r_ptr = i_ptr + stride + image.c();
                     // Loop until we reach end of image row
                     for (; i_ptr < r_ptr; i_ptr+=image.c(), c_ptr+=conv.c()) {
                         // Reset accumulators
@@ -820,7 +910,7 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                         // Get kernel start pointer
                         const K* __restrict k_ptr = &kernel[0];
                         // Get image start pointer for kernel
-                        const T* __restrict si_ptr = (i_ptr - padding);
+                        const I* __restrict si_ptr = (i_ptr - padding);
                         // Loop through kernel height
                         for (unsigned int ky = 0; ky < kernel.h(); ++ky) {
                             // Loop through kernel width
@@ -845,11 +935,14 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                                 buffers[c] /= sums[c];
                             }
                         }
+                        // Get clamp limits depending on the type
+                        K cmin, cmax;
+                        if constexpr (std::floating_point<I>) { cmin = 0.0, cmax = 1.0; } else { cmin = std::numeric_limits<I>::min(), cmax = std::numeric_limits<I>::max(); }
                         // Loop through channels
                         #pragma GCC ivdep
                         for (unsigned int c = 0; c < image.c(); ++c) {
                             // Clamp buffer to ensure its in range and cast to unsigned char
-                            c_ptr[c] = static_cast<T>(std::clamp(buffers[c], static_cast<K>(0), static_cast<K>(255)));
+                            c_ptr[c] = static_cast<I>(std::clamp(buffers[c], cmin, cmax));
                         }
                     }
                 } break;
@@ -857,7 +950,7 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
         } return conv;
     #else
         // Initialize convolution image
-        Image<T> conv(image.w(), image.h(), image.c());
+        Image<I> conv(image.w(), image.h(), image.c());
         // Initialize sum vector
         std::vector<K> sums(kernel.c(), static_cast<K>(0));
         // Precompute kernel sums
@@ -893,14 +986,17 @@ Image<T> convolute(const Image<T>& image, const Kernel<K>& kernel) NOEXCEPT {
                             // Accumulate operations
                             buffer += image[x + (i - kernel.hw()), y + (j - kernel.hh()), c] * kernel[i, j, c];
                         }
-                    }
-                    // Two ways of doing things depending on decimals or not
-                    if constexpr (std::floating_point<K>) {
-                        // Fused Normalization and Clamping per channel
-                        conv[x, y, c] = static_cast<T>(std::clamp(buffer * sums[c], static_cast<K>(0), static_cast<K>(255)));
-                    } else {
-                        // Fused Normalization and Clamping per channel
-                        conv[x, y, c] = static_cast<T>(std::clamp(buffer / sums[c], static_cast<K>(0), static_cast<K>(255)));
+                        // Get clamp limits depending on the type
+                        K cmin, cmax;
+                        if constexpr (std::floating_point<I>) { cmin = 0.0, cmax = 1.0; } else { cmin = std::numeric_limits<I>::min(), cmax = std::numeric_limits<I>::max(); }
+                        // Two ways of doing things depending on decimals or not
+                        if constexpr (std::floating_point<K>) {
+                            // Fused Normalization and Clamping per channel
+                            conv[x, y, c] = static_cast<I>(std::clamp(buffer * sums[c], cmin, cmax));
+                        } else {
+                            // Fused Normalization and Clamping per channel
+                            conv[x, y, c] = static_cast<I>(std::clamp(buffer / sums[c], cmin, cmax));
+                        }
                     }
                 }
             }
@@ -920,8 +1016,7 @@ std::vector<std::string> get_image_paths(const std::string& folder) noexcept {
         // Get extension
         const std::string ext = entry.path().extension().string();
         // Check if image extension
-        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" ||
-            ext == ".tga" || ext == ".hdr" || ext == ".psd" || ext == ".pic" || ext == ".pgm" || ext == ".ppm") {
+        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp") {
             files.push_back(entry.path().string());
         }
     } return files;
@@ -949,16 +1044,16 @@ int main() noexcept {
     // Define list of kernels to process.
     // We use a lambda to generate the kernel object on demand.
     const std::vector<std::pair<std::string, std::function<Kernel<CNV_DTYPE>(unsigned int, unsigned int)>>> kernel_list = {
-        {"identity",       [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::identity(c); }},
+        {"identity",       [](unsigned int, unsigned int c){ return Kernel<CNV_DTYPE>::identity(c); }},
         {"box_blur",       [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::box_blur(s, c); }},
         {"gaussian",       [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::gaussian(s, c); }},
-        {"sharpen_3",      [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::sharpen(c); }},
-        {"sharpen_5",      [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::sharpen5(c); }},
-        {"laplacian_3",    [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::laplacian(c); }},
-        {"laplacian_5",    [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::laplacian5(c); }},
-        {"sobel_x",        [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::sobel_x(c); }},
-        {"sobel_y",        [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::sobel_y(c); }},
-        {"emboss",         [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::emboss(c); }},
+        {"sharpen_3",      [](unsigned int, unsigned int c){ return Kernel<CNV_DTYPE>::sharpen(c); }},
+        {"sharpen_5",      [](unsigned int, unsigned int c){ return Kernel<CNV_DTYPE>::sharpen5(c); }},
+        {"laplacian_3",    [](unsigned int, unsigned int c){ return Kernel<CNV_DTYPE>::laplacian(c); }},
+        {"laplacian_5",    [](unsigned int, unsigned int c){ return Kernel<CNV_DTYPE>::laplacian5(c); }},
+        {"sobel_x",        [](unsigned int, unsigned int c){ return Kernel<CNV_DTYPE>::sobel_x(c); }},
+        {"sobel_y",        [](unsigned int, unsigned int c){ return Kernel<CNV_DTYPE>::sobel_y(c); }},
+        {"emboss",         [](unsigned int, unsigned int c){ return Kernel<CNV_DTYPE>::emboss(c); }},
         {"motion_blur_x",  [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::motion_blur_x(s, c); }},
         {"motion_blur_y",  [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::motion_blur_y(s, c); }},
         {"glitch_x",       [](unsigned int s, unsigned int c){ return Kernel<CNV_DTYPE>::glitch_x(s, c); }},
@@ -976,25 +1071,26 @@ int main() noexcept {
 
     // Loop through each kernel definition
     for (const auto& kv : kernel_list) {
-        // Extract pair
-        std::string k_name = kv.first;
-        const auto& k_factory = kv.second;
+        // Create all kernel subfolders
+        std::filesystem::create_directory(OUTPUT_DIRECTORY + kv.first + "/");
+    }
 
-        #ifndef SILENT
-            std::cout << "[Kernel] " << k_name << "...\n";
+    // Process all images with kernel
+    for (const std::string& file : files) {
+        #ifndef NO_THROWS
+            try {
         #endif
+            // Load Image
+            const Image<IMG_DTYPE> image(file);
 
-        // Create subdirectory for this kernel
-        std::string out_dir = OUTPUT_DIRECTORY + k_name + "/";
-        std::filesystem::create_directory(out_dir);
+            // Loop through each kernel definition
+            for (const auto& kv : kernel_list) {
+                // Extract pair
+                std::string k_name = kv.first;
+                const auto& k_factory = kv.second;
 
-        // Process all images with kernel
-        for (const std::string& file : files) {
-            #ifndef NO_THROWS
-                try {
-            #endif
-                // Load Image
-                const Image<IMG_DTYPE> image(file);
+                // Get output folder path
+                std::string out_dir = OUTPUT_DIRECTORY + k_name + "/";
 
                 // Create the kernel object
                 const Kernel<CNV_DTYPE> kernel = k_factory(Kernel<CNV_DTYPE>::get_size_by_ratio(image), image.c());
@@ -1007,23 +1103,23 @@ int main() noexcept {
                 const std::string out_path = out_dir + filename;
 
                 // Write to disk
-                conv.write(out_path);
+                //conv.write(out_path);
 
                 #ifndef SILENT
                     // Print processing info
                     printf(" [%s](%dx%dx%d) -> Processed '%s' (%dx%dx%d)\n", k_name.c_str(), kernel.w(), kernel.h(), kernel.c(), filename.c_str(), image.w(), image.h(), image.c());
                 #endif
-
-            #ifndef NO_THROWS
-                } catch (const std::exception& e) {
-                    std::cerr << " [ERROR] Failed to process '" << file << "': " << e.what() << "\n";
-                }
-            #endif
-        }
-        #ifndef SILENT
-            std::cout << " Done.\n";
+            }
+        #ifndef NO_THROWS
+            } catch (const std::exception& e) {
+                std::cerr << " [ERROR] Failed to process '" << file << "': " << e.what() << "\n";
+            }
         #endif
     }
+    #ifndef SILENT
+        std::cout << " Done.\n";
+    #endif
+
     #ifndef SILENT
         std::cout << "All operations completed successfully.\n";
     #endif

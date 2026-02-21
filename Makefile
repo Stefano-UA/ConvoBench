@@ -2,92 +2,143 @@
 CXX      := g++
 # Lib directory
 LIB_DIR  := lib
+
 # Flags used:
 # -std=c++23 : Use standard C++23 (minimum for this project)
 # -Wall -Wextra : Show all warnings
 # -MMD -MP : Generate .d files to track header dependencies automatically
 # -I$(LIB_DIR) : Look for header files in the $(LIB_DIR) directory
-# -fopt-info-vec-missed -fopt-info-vec-optimized : Print information about automatic vectorization
-CXXFLAGS := -std=c++23 -MMD -MP -march=native -mtune=native -I$(LIB_DIR) -fopt-info-vec-missed -fopt-info-vec-optimized
+CXXFLAGS := -std=c++23 -Wall -Wextra -MMD -MP -I$(LIB_DIR)
 
-# Uncomment to include expensive bound checks
-# CXXFLAGS := $(CXXFLAGS) -DCHECK_BOUNDS -DPADDED_ACCESS
+# Uncomment to print vectorization information
+# CXXFLAGS := $(CXXFLAGS) -fopt-info-vec-missed -fopt-info-vec-optimized
 
-# Uncomment to disable all prints
-CXXFLAGS := $(CXXFLAGS) -DSILENT
+# Uncomment to hide usual warnings
+CXXFLAGS := $(CXXFLAGS) -Wno-missing-field-initializers
 
-# Uncomment to disable all safety error throwing checks
-CXXFLAGS := $(CXXFLAGS) -DNO_THROWS
+# Uncomment to compile with benchmarking code
+CXXFLAGS := $(CXXFLAGS) -DDO_BENCHMARK
 
-# Uncomment to disable all error handling
-CXXFLAGS := $(CXXFLAGS) -DHARD_ERRORS
+# Combinatorial axes definition
+O_AXIS    := O0 O1 O2 O3		# Optimization
+ARCH_AXIS := ARCH+ ARCH-		# Architecture-Oriented Code
+VEC_AXIS  := VEC+ VEC~ VEC-	# Vectorized Code
+ALIG_AXIS := ALIG+ ALIG-	  # Aligned Allocation
+IMGDT_AXIS := IMGF IMGC	    # Image Datatype
+KERDT_AXIS := KERF KERD	    # Kernel Datatype
+ERR_AXIS  := E+ E-		      # C++ Errors
+FM_AXIS   := FM+ FM-			  # Fast Math
+SIL_AXIS  := S+ S-		      # Silent Code
 
-# Uncomment to enable more specific optimization flags at the cost error reporting, math precision, and compile time
-CXXFLAGS := $(CXXFLAGS) -fno-math-errno -ffast-math -funroll-loops -flto -finline-functions -fno-exceptions -fno-rtti
+# Optimization flags
+O0_FLAGS := -O0
+O1_FLAGS := -O1
+O2_FLAGS := -O2
+O3_FLAGS := -O3
 
+# Native architecture flags
+ARCH+_FLAGS := -march=native -mtune=native
+ARCH-_FLAGS :=
+
+# Vectorization flags
+VEC+_FLAGS := -DVECTORIZED_CONVO -ftree-vectorize
+VEC~_FLAGS := -DVECTORIZABLE_CONVO -ftree-vectorize -fopt-info-vec-missed -fopt-info-vec-optimized
+VEC-_FLAGS := -DUNVECTORIZED_CONVO -fno-tree-vectorize
+
+# Aligned allocation flags
+ALIG+_FLAGS := -DALIGNED_ALLOCATION
+ALIG-_FLAGS := -DNORMAL_ALLOCATION
+
+# Image datatype flags
+IMGF_FLAGS := -DIMG_DTYPE=float
+IMGC_FLAGS := -DIMG_DTYPE='unsigned char'
+
+# Kernel datatype flags
+KERF_FLAGS := -DCNV_DTYPE=float
+KERD_FLAGS := -DCNV_DTYPE=double
+
+# Error flags
+E+_FLAGS := -DCHECK_BOUNDS -DPADDED_ACCESS
+E-_FLAGS := -DHARD_ERRORS -DNO_THROWS -fno-exceptions -fno-rtti -fno-math-errno
+
+# Fast math flags
+FM+_FLAGS := -ffast-math
+FM-_FLAGS :=
+
+# Silent flags
+S+_FLAGS := -DSILENT
+S-_FLAGS :=
+
+# Targets
 BASENAME    := main
 BUILD_DIR   := build
 SRCS        := main.cpp
 RESOURCES   := input output
 
-# Default rule
-all: O0 O1 O2 O3
+.DEFAULT_GOAL := all
 
-# OG Profile: -OG, adds .oG suffix
-OG: CXXFLAGS := $(CXXFLAGS) -O0 -g
-OG: PROFILE  := OG
-OG: $(BUILD_DIR)/$(BASENAME).oG
+# Template to generate rules dynamically
+# $(1) is the profile name, $(2)-$(10) are the axes values
+define GENERATE_PROFILE_RULES
 
-# O0 Profile: -O0, adds .o0 suffix
-O0: CXXFLAGS := $(CXXFLAGS) -O0
-O0: PROFILE  := O0
-O0: $(BUILD_DIR)/$(BASENAME).o0
+# Flags for this specific combination
+$(1)_CXXFLAGS := $$(CXXFLAGS) $$($(2)_FLAGS) $$($(3)_FLAGS) $$($(4)_FLAGS) $$($(5)_FLAGS) $$($(6)_FLAGS) $$($(7)_FLAGS) $$($(8)_FLAGS) $$($(9)_FLAGS) $$($(10)_FLAGS)
 
-# O1 Profile: -O1, adds .o1 suffix
-O1: CXXFLAGS := $(CXXFLAGS) -O1
-O1: PROFILE  := O1
-O1: $(BUILD_DIR)/$(BASENAME).o1
-
-# O2 Profile: -O2, adds .o2 suffix
-O2: CXXFLAGS := $(CXXFLAGS) -O2
-O2: PROFILE  := O2
-O2: $(BUILD_DIR)/$(BASENAME).o2
-
-# O3 Profile: -O3, adds .o3 suffix
-O3: CXXFLAGS := $(CXXFLAGS) -O3
-O3: PROFILE  := O3
-O3: $(BUILD_DIR)/$(BASENAME).o3
-
-# Compilation: Matches .o0, .o1, etc.
+# Compilation: Matches specific profile object files
 # $< is the source file, $@ is the target file
-$(BUILD_DIR)/$(PROFILE)/%.o: %.cpp
-	@mkdir -p $(dir $@)
-	@$(foreach dir, $(RESOURCES), \
-		if [ ! -L $(BUILD_DIR)/$(dir) ]; then \
-			ln -sfr $(dir) $(BUILD_DIR)/$(dir); \
-			echo "Linked $(BUILD_DIR)/$(dir) -> $(dir)"; \
-		fi; \
+$(BUILD_DIR)/v/$(1)/%.o: %.cpp
+	@mkdir -p $$(dir $$@)
+	@$$(foreach dir, $(RESOURCES), \
+	    if [ ! -L $(BUILD_DIR)/$$(dir) ]; then \
+	        ln -sfr $$(dir) $(BUILD_DIR)/$$(dir); \
+	    fi; \
 	)
-	@echo "Compiling $< [$@]"
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@echo "Compiling $$< [$(1)]"
+	$$(CXX) $$($(1)_CXXFLAGS) -c $$< -o $$@
 
-# Linking: Matches .o0, .o1, etc.
-$(BUILD_DIR)/$(BASENAME).o%: FORCE
-	@mkdir -p $(BUILD_DIR)
-	@$(MAKE) $(BUILD_DIR)/$(PROFILE)/$(SRCS:.cpp=.o) PROFILE=$(PROFILE) CXXFLAGS="$(CXXFLAGS)"
-	@echo "Linking $@..."
-	$(CXX) $(BUILD_DIR)/$(PROFILE)/$(SRCS:.cpp=.o) $(CXXFLAGS) -o $@
+# Linking: Matches specific profile executable
+$(BUILD_DIR)/$(BASENAME).$(1): $$(addprefix $(BUILD_DIR)/v/$(1)/, $$(SRCS:.cpp=.o))
+	@echo "Linking $$@..."
+	$$(CXX) $$^ $$($(1)_CXXFLAGS) -o $$@
 
 # Include dependencies
--include $(BUILD_DIR)/*/*.d
+-include $(BUILD_DIR)/v/$(1)/*.d
+
+endef
+
+# Generate the Cartesian product targets
+TARGETS :=
+$(foreach o, $(O_AXIS), \
+  $(foreach a, $(ARCH_AXIS), \
+    $(foreach v, $(VEC_AXIS), \
+      $(foreach l, $(ALIG_AXIS), \
+        $(foreach i, $(IMGDT_AXIS), \
+          $(foreach k, $(KERDT_AXIS), \
+            $(foreach e, $(ERR_AXIS), \
+              $(foreach f, $(FM_AXIS), \
+                $(foreach s, $(SIL_AXIS), \
+                  $(eval TARGETS += $(BUILD_DIR)/$(BASENAME).$(o).$(a).$(v).$(l).$(i).$(k).$(e).$(f).$(s)) \
+                  $(eval $(call GENERATE_PROFILE_RULES,$(o).$(a).$(v).$(l).$(i).$(k).$(e).$(f).$(s),$(o),$(a),$(v),$(l),$(i),$(k),$(e),$(f),$(s),)) \
+                ) \
+              ) \
+            ) \
+          ) \
+        ) \
+      ) \
+    ) \
+  ) \
+)
+
+# Default rule
+all: $(TARGETS)
 
 # Clean all output
 clean:
 	@echo "Cleaning $(BUILD_DIR)..."
 	rm -fr $(BUILD_DIR)
 
-# Helper to force rules to run (needed for recursive make check)
+# Helper to force rules to run
 FORCE:
 
 # Specify that they are not real files
-.PHONY: all clean O0 O1 O2 O3 FORCE
+.PHONY: all clean FORCE
