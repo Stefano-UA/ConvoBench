@@ -1,10 +1,15 @@
 #include <vector>
 #include <limits>
+#include <chrono>
+#include <clocale>
 #include <concepts>
 #include <iostream>
 #include <algorithm>
 #include <functional>
 #include <filesystem>
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
+    #include <x86intrin.h>
+#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -93,27 +98,40 @@
     #define OUTPUT_DIRECTORY "./output/"
 #endif
 
-// Macro for measuring the time that some instructions take to execute
-#define BENCHMARK_CHRONO(name, ...) \
-    do { \
-        auto _bench_start = std::chrono::high_resolution_clock::now(); \
-        __VA_ARGS__; \
-        asm volatile("" ::: "memory"); \
-        auto _bench_end = std::chrono::high_resolution_clock::now(); \
-        std::chrono::duration<double, std::micro> _bench_dur = (_bench_end - _bench_start); \
-        std::cout << "[CHRONO] " << name << " -> " << _bench_dur.count() << " us\n"; \
-    } while(0)
+#ifdef DO_BENCHMARK
+    // Macros needed to expand when concatenating
+    #define _MACRO_CONCAT(a, b) a ## b
+    #define MACRO_CONCAT(a, b) _MACRO_CONCAT(a, b)
 
-// Macro for measuring the CPU cycles some instructions take to execute
-#define BENCHMARK_CYCLES(name, ...) \
-    do { \
-        unsigned int _bench_aux; \
-        uint64_t _bench_start = __rdtscp(&_bench_aux); \
+    // Macro for measuring the time that some instructions take to execute
+    #define _BENCHMARK_CHRONO(out_var, id, ...) \
+        auto MACRO_CONCAT(_b_start_, id) = std::chrono::high_resolution_clock::now(); \
         __VA_ARGS__; \
         asm volatile("" ::: "memory"); \
-        uint64_t _bench_end = __rdtscp(&_bench_aux); \
-        std::cout << "[CYCLES] " << name << " -> " << (_bench_end - _bench_start) << " cycles\n"; \
-    } while(0)
+        auto MACRO_CONCAT(_b_end_, id) = std::chrono::high_resolution_clock::now(); \
+        std::chrono::duration<double, std::micro> MACRO_CONCAT(_b_dur_, id) = MACRO_CONCAT(_b_end_, id) - MACRO_CONCAT(_b_start_, id); \
+        (out_var) += MACRO_CONCAT(_b_dur_, id).count();
+
+    #define BENCHMARK_CHRONO(out_var, ...) _BENCHMARK_CHRONO(out_var, __COUNTER__, __VA_ARGS__)
+
+    // Macro for measuring the CPU cycles some instructions take to execute
+    #define _BENCHMARK_CYCLES(out_var, id, ...) \
+        unsigned int MACRO_CONCAT(_b_aux_, id); \
+        uint64_t MACRO_CONCAT(_b_start_, id) = __rdtscp(&MACRO_CONCAT(_b_aux_, id)); \
+        __VA_ARGS__; \
+        asm volatile("" ::: "memory"); \
+        uint64_t MACRO_CONCAT(_b_end_, id) = __rdtscp(&MACRO_CONCAT(_b_aux_, id)); \
+        (out_var) += (MACRO_CONCAT(_b_end_, id) - MACRO_CONCAT(_b_start_, id));
+
+    #define BENCHMARK_CYCLES(out_var, ...) _BENCHMARK_CHRONO(out_var, __COUNTER__, __VA_ARGS__)
+
+#else
+    #define BENCHMARK_CHRONO_OUT(out_var, ...) \
+        __VA_ARGS__;
+
+    #define BENCHMARK_CYCLES_OUT(out_var, ...) \
+        __VA_ARGS__;
+#endif
 
 /**
 * @brief Base templated class representing a 3D tensor (Width x Height x Channels).
@@ -713,8 +731,6 @@ class Kernel : public Tensor<K> {
 * @param kernel The convolution kernel.
 * @return Image A new image containing the convolution result.
 */
-#define VECTORIZABLE_CONVO 2
-
 template <typename I, typename K>
 requires (std::integral<I> || std::floating_point<I>) && (std::integral<K> || std::floating_point<K>)
 Image<I> convolute(const Image<I>& image, const Kernel<K>& kernel) NOEXCEPT {
@@ -1075,13 +1091,23 @@ int main() noexcept {
         std::filesystem::create_directory(OUTPUT_DIRECTORY + kv.first + "/");
     }
 
+    #ifdef DO_BENCHMARK
+        double read_t = 0, write_t = 0, conv_t = 0, ker_t = 0;
+        uint64_t read_i = 0, write_i = 0, conv_i = 0, ker_i = 0;
+    #endif
+
     // Process all images with kernel
     for (const std::string& file : files) {
         #ifndef NO_THROWS
             try {
         #endif
-            // Load Image
-            const Image<IMG_DTYPE> image(file);
+
+            BENCHMARK_CHRONO(read_t,
+                BENCHMARK_CYCLES(read_i,
+                    // Load Image
+                    const Image<IMG_DTYPE> image(file);
+                )
+            )
 
             // Loop through each kernel definition
             for (const auto& kv : kernel_list) {
@@ -1089,21 +1115,35 @@ int main() noexcept {
                 std::string k_name = kv.first;
                 const auto& k_factory = kv.second;
 
-                // Get output folder path
-                std::string out_dir = OUTPUT_DIRECTORY + k_name + "/";
+                BENCHMARK_CHRONO(ker_t,
+                    BENCHMARK_CYCLES(ker_i,
+                        // Create the kernel object
+                        const Kernel<CNV_DTYPE> kernel = k_factory(Kernel<CNV_DTYPE>::get_size_by_ratio(image), image.c());
+                    )
+                )
 
-                // Create the kernel object
-                const Kernel<CNV_DTYPE> kernel = k_factory(Kernel<CNV_DTYPE>::get_size_by_ratio(image), image.c());
+                BENCHMARK_CHRONO(conv_t,
+                    BENCHMARK_CYCLES(conv_i,
+                        // Apply Convolution
+                        Image<IMG_DTYPE> conv = convolute(image, kernel);
+                    )
+                )
 
-                // Apply Convolution
-                Image<IMG_DTYPE> conv = convolute(image, kernel);
+                BENCHMARK_CHRONO(write_t,
+                    BENCHMARK_CYCLES(write_i,
+                        // Get output folder path
+                        std::string out_dir = OUTPUT_DIRECTORY + k_name + "/";
 
-                // Generate Output Path
-                const std::string filename = std::filesystem::path(file).filename().replace_extension(".png").string();
-                const std::string out_path = out_dir + filename;
+                        // Generate Output Path
+                        const char* ext;
+                        if constexpr (std::floating_point<IMG_DTYPE>) { ext = ".hdr"; } else { ext = ".png"; }
+                        const std::string filename = std::filesystem::path(file).filename().replace_extension(ext).string();
+                        const std::string out_path = out_dir + filename;
 
-                // Write to disk
-                //conv.write(out_path);
+                        // Write to disk
+                        conv.write(out_path);
+                    )
+                )
 
                 #ifndef SILENT
                     // Print processing info
@@ -1118,6 +1158,14 @@ int main() noexcept {
     }
     #ifndef SILENT
         std::cout << " Done.\n";
+    #endif
+
+    #ifdef DO_BENCHMARK
+        setlocale(LC_NUMERIC, "");
+        printf(" %-7s | %'14.4f s | %'15lu cyc\n", "[READ]", read_t / 1e6, read_i);
+        printf(" %-7s | %'14.4f s | %'15lu cyc\n", "[WRITE]", write_t / 1e6, write_i);
+        printf(" %-7s | %'14.4f s | %'15lu cyc\n", "[CONV]", conv_t / 1e6, conv_i);
+        printf(" %-7s | %'14.4f s | %'15lu cyc\n", "[KER]", ker_t / 1e6, ker_i);
     #endif
 
     #ifndef SILENT
