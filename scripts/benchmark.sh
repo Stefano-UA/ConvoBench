@@ -25,6 +25,13 @@ CSV_OUT="${WKDIR}/../benchmarks.csv"
 RUN_DIR="/tmp/convobench" # We run on RAM!
 N_RUNS=3 # Number of times to execute each binary for the average
 # <===============================================================================>
+#  Build binaries if needed
+# <===============================================================================>
+pushd "${WKDIR}/.." &>/dev/null
+echo -e "\nMaking binaries... (Be patient)\n"
+make -j$(nproc) >/dev/null
+popd &>/dev/null
+# <===============================================================================>
 #  Record script start time
 # <===============================================================================>
 SCRIPT_START="$(date +%s)"
