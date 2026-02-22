@@ -20,15 +20,15 @@ CXXFLAGS := $(CXXFLAGS) -Wno-missing-field-initializers
 CXXFLAGS := $(CXXFLAGS) -DDO_BENCHMARK
 
 # Combinatorial axes definition
-O_AXIS    := O0 O1 O2 O3		# Optimization
-ARCH_AXIS := ARCH+ ARCH-		# Architecture-Oriented Code
-VEC_AXIS  := VEC+ VEC~ VEC-	# Vectorized Code
-ALIG_AXIS := ALIG+ ALIG-	  # Aligned Allocation
-IMGDT_AXIS := IMGF IMGC	    # Image Datatype
-KERDT_AXIS := KERF KERD	    # Kernel Datatype
-ERR_AXIS  := E+ E-		      # C++ Errors
-FM_AXIS   := FM+ FM-			  # Fast Math
-SIL_AXIS  := S+ S-		      # Silent Code
+O_AXIS     := O0 O1 O2 O3		  # Optimization
+ARCH_AXIS  := ARCH+ #ARCH-	  # Architecture-Oriented Code
+VEC_AXIS   := VEC~ VEC- #VEC+	# Vectorized Code
+ALIG_AXIS  := ALIG+ ALIG-	    # Aligned Allocation
+IMGDT_AXIS := IMGF IMGC	      # Image Datatype
+KERDT_AXIS := KERF KERD	      # Kernel Datatype
+ERR_AXIS   := E+ E-		        # C++ Errors
+FM_AXIS    := FM+ FM-			    # Fast Math
+SIL_AXIS   := S+ #S-	        # Silent Code
 
 # Optimization flags
 O0_FLAGS := -O0
