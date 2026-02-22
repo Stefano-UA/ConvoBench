@@ -1,47 +1,71 @@
 #!/bin/bash
+# <===============================================================================>
 
-# Script directory
-HERE="$(realpath "$(dirname "${BASH_SOURCE[0]}")")"
+#   ██████╗ ███████╗███╗   ██╗ ██████╗██╗  ██╗███╗   ███╗ █████╗ ██████╗ ██╗  ██╗
+#   ██╔══██╗██╔════╝████╗  ██║██╔════╝██║  ██║████╗ ████║██╔══██╗██╔══██╗██║ ██╔╝
+#   ██████╔╝█████╗  ██╔██╗ ██║██║     ███████║██╔████╔██║███████║██████╔╝█████╔╝
+#   ██╔══██╗██╔══╝  ██║╚██╗██║██║     ██╔══██║██║╚██╔╝██║██╔══██║██╔══██╗██╔═██╗
+#   ██████╔╝███████╗██║ ╚████║╚██████╗██║  ██║██║ ╚═╝ ██║██║  ██║██║  ██║██║  ██╗
+#   ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
 
-# Configuration
+# <===============================================================================>
+#                          Benchmark Execution Script
+# <===============================================================================>
+#  Script directory
+# <===============================================================================>
+WKDIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")")"
+# <===============================================================================>
+#  Configuration
+# <===============================================================================>
 CORE=2 # Core to run binaries on (pinning)
 OUT_DIR="output"
-IN_DIR="${HERE}/../input"
-BIN_DIR="${HERE}/../build"
-CSV_OUT="${HERE}/../benchmarks.csv"
+IN_DIR="${WKDIR}/../input"
+BIN_DIR="${WKDIR}/../build"
+CSV_OUT="${WKDIR}/../benchmarks.csv"
 RUN_DIR="/tmp/convobench" # We run on RAM!
 N_RUNS=3 # Number of times to execute each binary for the average
-
-echo "================================================================="
-echo "                  PERFORMANCE BENCHMARK REPORT                   "
-echo "================================================================="
-printf "%-40s | %-15s\n" "Binary Profile" "Avg Total Time (s)"
-echo "-----------------------------------------------------------------"
-
-# Create run directory
+# <===============================================================================>
+#  Record script start time
+# <===============================================================================>
+SCRIPT_START="$(date +%s)"
+echo "<===============================================================================================>"
+echo "                                   PERFORMANCE BENCHMARK REPORT                                  "
+echo "<===============================================================================================>"
+printf " %-50s | %-20s | %-20s\n" "Binary Profile" "Avg Total Time (s)" "Total Elapsed"
+echo "<----------------------------------------------------------------------------------------------->"
+# <===============================================================================>
+#  Create run directory
+# <===============================================================================>
 mkdir -p "${RUN_DIR}/bin"
 trap 'rm -fr "$RUN_DIR" &>/dev/null' EXIT
-
-# Copy required data to run directory
+# <===============================================================================>
+#  Copy required data to run directory
+# <===============================================================================>
 cp "${BIN_DIR}/main".* "${RUN_DIR}/bin"
 cp -r "$IN_DIR" "${RUN_DIR}"
-
-# Initialize CSV Header
+# <===============================================================================>
+#  Initialize CSV Header
+# <===============================================================================>
 echo "O,ARCH,VEC,ALIG,IMG,KER,E,FM,S,Total_s,Read_s,Read_cyc,Write_s,Write_cyc,Conv_s,Conv_cyc,Ker_s,Ker_cyc" > "$CSV_OUT"
-
-# Iterate over all valid executables
+# <===============================================================================>
+#  Iterate over all valid executables
+# <===============================================================================>
 for FILE_PATH in "${RUN_DIR}/bin/main".*; do
-
-    # Skip if not a regular file or not executable
+    # <===============================================================================>
+    #  Skip if not a regular file or not executable
+    # <===============================================================================>
     ([ ! -f "$FILE_PATH" ] || [ ! -x "$FILE_PATH" ]) && continue
-
-    # String Extraction (Axis Parsing)
+    # <===============================================================================>
+    #  String Extraction (Axis Parsing)
+    # <===============================================================================>
     basename="$(basename "$FILE_PATH")"
-
-    # Split the filename into an array using the dot as a delimiter
+    # <===============================================================================>
+    #  Split the filename into an array using the dot as a delimiter
+    # <===============================================================================>
     IFS='.' read -r -a parts <<< "$basename"
-
-    # Extract varying values by stripping the static column prefixes
+    # <===============================================================================>
+    #  Extract varying values by stripping the static column prefixes
+    # <===============================================================================>
     val_O="${parts[1]#O}"
     val_ARCH="${parts[2]#ARCH}"
     val_VEC="${parts[3]#VEC}"
@@ -51,38 +75,50 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
     val_E="${parts[7]#E}"
     val_FM="${parts[8]#FM}"
     val_S="${parts[9]#S}"
-
-    # Aggregation variables setup
+    # <===============================================================================>
+    #  Aggregation variables setup
+    # <===============================================================================>
     sum_total=0
     sum_r_s=0; sum_r_c=0
     sum_w_s=0; sum_w_c=0
     sum_c_s=0; sum_c_c=0
     sum_k_s=0; sum_k_c=0
-
-    # Run once to warm up the environment
+    # <===============================================================================>
+    #  Run once to warm up the environment
+    # <===============================================================================>
     pushd "$RUN_DIR" &>/dev/null
     taskset -c $CORE "$FILE_PATH" &>/dev/null
     popd &>/dev/null
-
-    # Inner execution loop
+    # <===============================================================================>
+    #  Inner execution loop
+    # <===============================================================================>
     for ((i=1; i<=N_RUNS; i++)); do
-        # Remove output dir so environment is constant
+        # <===============================================================================>
+        #  Remove output dir so environment is constant
+        # <===============================================================================>
         rm -fr "${RUN_DIR}/${OUT_DIR}" &> /dev/null
-
         pushd "$RUN_DIR" &>/dev/null
-        # Capture start time (nanoseconds)
+        # <===============================================================================>
+        #  Capture start time (nanoseconds)
+        # <===============================================================================>
         start_time="$(date +%s%N)"
-        # Run the binary. Capture stdout to a variable, discard stderr.
+        # <===============================================================================>
+        #  Run the binary. Capture stdout to a variable, discard stderr.
+        # <===============================================================================>
         out_text="$(taskset -c $CORE "$FILE_PATH" 2>/dev/null)"
-        # Capture end time
+        # <===============================================================================>
+        #  Capture end time
+        # <===============================================================================>
         end_time="$(date +%s%N)"
         popd &>/dev/null
-
-        # Calculate this specific run's duration in seconds using awk for float precision
+        # <===============================================================================>
+        #  Calculate this specific run's duration in seconds using awk for float precision
+        # <===============================================================================>
         dur_s="$(awk -v e="${end_time}" -v s="${start_time}" 'BEGIN { printf "%.6f", (e - s) / 1000000000 }')"
         sum_total="$(awk -v a="${sum_total}" -v b="${dur_s}" 'BEGIN { printf "%.6f", a + b }')"
-
-        # Helper function to extract and sanitize numbers from the C++ output
+        # <===============================================================================>
+        #  Helper function to extract and sanitize numbers from the C++ output
+        # <===============================================================================>
         parse_metric() {
             local prefix="$1"
             local is_cycle="$2"
@@ -99,14 +135,16 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
                 awk -v us="$cleaned" 'BEGIN { printf "%.6f", us }'
             fi
         }
-
-        # Extract values for this run
+        # <===============================================================================>
+        #  Extract values for this run
+        # <===============================================================================>
         r_s="$(parse_metric "READ" 0)"; r_s="${r_s:-0}"; r_c="$(parse_metric "READ" 1)"; r_c="${r_c:-0}"
         w_s="$(parse_metric "WRITE" 0)"; w_s="${w_s:-0}"; w_c="$(parse_metric "WRITE" 1)"; w_c="${w_c:-0}"
         c_s="$(parse_metric "CONV" 0)"; c_s="${c_s:-0}"; c_c="$(parse_metric "CONV" 1)"; c_c="${c_c:-0}"
         k_s="$(parse_metric "KER" 0)"; k_s="${k_s:-0}"; k_c="$(parse_metric "KER" 1)"; k_c="${k_c:-0}"
-
-        # Accumulate sums
+        # <===============================================================================>
+        #  Accumulate sums
+        # <===============================================================================>
         sum_r_s="$(awk -v a="${sum_r_s}" -v b="${r_s}" 'BEGIN { printf "%.6f", a + b }')"
         sum_r_c="$(awk -v a="${sum_r_c}" -v b="${r_c}" 'BEGIN { print a + b }')"
         sum_w_s="$(awk -v a="${sum_w_s}" -v b="${w_s}" 'BEGIN { printf "%.6f", a + b }')"
@@ -116,8 +154,9 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
         sum_k_s="$(awk -v a="${sum_k_s}" -v b="${k_s}" 'BEGIN { printf "%.6f", a + b }')"
         sum_k_c="$(awk -v a="${sum_k_c}" -v b="${k_c}" 'BEGIN { print a + b }')"
     done
-
-    # Calculate averages
+    # <===============================================================================>
+    #  Calculate averages
+    # <===============================================================================>
     avg_total="$(awk -v sum="${sum_total}" -v n="${N_RUNS}" 'BEGIN { printf "%.4f", sum / n }')"
     avg_r_s="$(awk -v sum="${sum_r_s}" -v n="${N_RUNS}" 'BEGIN { printf "%.6f", sum / n }')"
     avg_r_c="$(awk -v sum="${sum_r_c}" -v n="${N_RUNS}" 'BEGIN { printf "%.0f", sum / n }')"
@@ -127,12 +166,17 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
     avg_c_c="$(awk -v sum="${sum_c_c}" -v n="${N_RUNS}" 'BEGIN { printf "%.0f", sum / n }')"
     avg_k_s="$(awk -v sum="${sum_k_s}" -v n="${N_RUNS}" 'BEGIN { printf "%.6f", sum / n }')"
     avg_k_c="$(awk -v sum="${sum_k_c}" -v n="${N_RUNS}" 'BEGIN { printf "%.0f", sum / n }')"
-
-    # Write to CSV
+    # <===============================================================================>
+    #  Write to CSV
+    # <===============================================================================>
     echo "${val_O},${val_ARCH},${val_VEC},${val_ALIG},${val_IMG},${val_KER},${val_E},${val_FM},${val_S},${avg_total},${avg_r_s},${avg_r_c},${avg_w_s},${avg_w_c},${avg_c_s},${avg_c_c},${avg_k_s},${avg_k_c}" >> "$CSV_OUT"
-
-    # Output to console
-    printf "%-40s | %s s\n" "$basename" "$avg_total"
+    current_time="$(date +%s)"
+    elapsed="$(( current_time - SCRIPT_START ))"
+    elapsed_str="$(printf "%02dh %02dm %02ds" "$((elapsed/3600))" "$(( (elapsed%3600)/60 ))" "$((elapsed%60))")"
+    # <===============================================================================>
+    #  Output to console
+    # <===============================================================================>
+    printf " %-50s | %-20s | %-20s\n" "$basename" "$avg_total" "$elapsed_str"
 done
-
-echo "========================================"
+echo "<===============================================================================================>"
+# <===============================================================================>

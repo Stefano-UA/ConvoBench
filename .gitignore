@@ -68,4 +68,14 @@ Testing/
 .cache/
 
 # benchmarks csv
-benchmarks.csv
+*.csv
+
+# python venv
+.venv
+
+# python cache
+__pycache__/
+
+# visualization output
+visuals/analysis/
+visuals/comparative/
