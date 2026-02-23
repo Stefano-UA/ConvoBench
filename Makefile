@@ -25,7 +25,7 @@ ARCH_AXIS  := ARCH+ #ARCH-	  # Architecture-Oriented Code
 VEC_AXIS   := VEC~ VEC- #VEC+	# Vectorized Code
 ALIG_AXIS  := ALIG+ ALIG-	    # Aligned Allocation
 IMGDT_AXIS := IMGF IMGC	      # Image Datatype
-KERDT_AXIS := KERF KERD	      # Kernel Datatype
+KERDT_AXIS := KERF KERD KERI  # Kernel Datatype
 ERR_AXIS   := E+ E-		        # C++ Errors
 FM_AXIS    := FM+ FM-			    # Fast Math
 SIL_AXIS   := S+ #S-	        # Silent Code
@@ -56,6 +56,7 @@ IMGC_FLAGS := -DIMG_DTYPE='unsigned char'
 # Kernel datatype flags
 KERF_FLAGS := -DCNV_DTYPE=float
 KERD_FLAGS := -DCNV_DTYPE=double
+KERD_FLAGS := -DCNV_DTYPE=int
 
 # Error flags
 E+_FLAGS := -DCHECK_BOUNDS -DPADDED_ACCESS

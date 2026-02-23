@@ -86,7 +86,7 @@ fig_pc = px.parallel_categories(
 # Update layout to dark mode and set white text for legibility
 fig_pc.update_layout(plot_bgcolor='#111111', paper_bgcolor='#111111', font_color='white')
 fig_pc.write_html(os.path.join(OUTDIR, 'paralell_categories.html'))
-fig_pc.write_png(os.path.join(OUTDIR, 'paralell_categories.png'))
+fig_pc.write_image(os.path.join(OUTDIR, 'paralell_categories.png'))
 # <=============================================================>
 #  PLOT 2: Relative Improvement per Flag (Convolution Time)
 # <=============================================================>

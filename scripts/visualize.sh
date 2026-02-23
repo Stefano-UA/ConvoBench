@@ -25,7 +25,7 @@ python3 -m venv "$VENVDIR"
 # <============================================>
 echo "Installing required Python packages in virtual environment..."
 "${VENVDIR}/bin/pip" install --quiet --upgrade pip
-"${VENVDIR}/bin/pip" install --quiet pandas numpy matplotlib seaborn plotly scikit-learn
+"${VENVDIR}/bin/pip" install --quiet pandas numpy matplotlib seaborn plotly scikit-learn kaleido
 # <============================================>
 #  Execute the python script to make the plots:
 # <============================================>

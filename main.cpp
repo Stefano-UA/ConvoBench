@@ -9,6 +9,7 @@
 #include <filesystem>
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
     #include <x86intrin.h>
+    #include <immintrin.h>
 #endif
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -315,7 +316,7 @@ class Image : public Tensor<I> {
         /**
         * @brief Constructor for creating an empty blank image.
         */
-        Image(const unsigned int width, const unsigned int height, const unsigned int channels) noexcept : Tensor<I>(width, height, channels), is_stbi(false) {
+        Image(const unsigned int width, const unsigned int height, const unsigned int channels) noexcept : Tensor<I>(width, height, channels), is_stbi(false), rc(channels) {
             // Allocate memory for the data initialized to zero
             Tensor<I>::allocate(this->length);
         }
@@ -325,7 +326,7 @@ class Image : public Tensor<I> {
         * @param path The filesystem path to the image.
         * @throws std::runtime_error If loading fails.
         */
-        Image(const std::string& path) NOEXCEPT_THROWS requires std::same_as<I, float> || std::same_as<I, unsigned char> : Tensor<I>(0, 0, 0), is_stbi(true) {
+        Image(const std::string& path) NOEXCEPT_THROWS requires std::same_as<I, float> || std::same_as<I, unsigned char> : Tensor<I>(0, 0, 0), is_stbi(true), rc(0) {
             int w, h, c;
             // Two ways of doing things depending on decimals or not
             if constexpr (std::same_as<I, float>) {
@@ -340,9 +341,11 @@ class Image : public Tensor<I> {
                 if (this->data == NULL) { throw std::runtime_error("Failed to load image: " + path); }
             #endif
             // Store properties
-            this->width = static_cast<unsigned int>(w); this->height = static_cast<unsigned int>(h); this->channels = static_cast<unsigned int>(c);
+            this->width = static_cast<unsigned int>(w); this->height = static_cast<unsigned int>(h); this->channels = static_cast<unsigned int>(std::max(c, MIN_CHANNELS));
             // Compute length
             this->length = (this->width * this->height * this->channels);
+            // Store real channels
+            this->rc = static_cast<unsigned int>(c);
         }
 
         /**
@@ -361,7 +364,7 @@ class Image : public Tensor<I> {
         * @brief Move constructor specific to Image.
         * Copies the 'is_stbi' flag in addition to moving the Tensor data.
         */
-        Image(Image<I>&& o) noexcept : Tensor<I>(std::move(o)), is_stbi(o.is_stbi) {}
+        Image(Image<I>&& o) noexcept : Tensor<I>(std::move(o)), is_stbi(o.is_stbi), rc(o.rc) {}
 
         // Inherit operator
         using Tensor<I>::operator[];
@@ -388,7 +391,7 @@ class Image : public Tensor<I> {
             if constexpr (std::same_as<I, float>) {
                 stbi_write_hdr(path.c_str(), this->width, this->height, this->channels, this->data);
             } else {
-                stbi_write_png(path.c_str(), this->width, this->height, this->channels, this->data, 0);
+                stbi_write_png(path.c_str(), this->width, this->height, this->rc, this->data, (this->channels * this->width));
             }
         }
 
@@ -396,6 +399,7 @@ class Image : public Tensor<I> {
 
         static constexpr I padding = 0;
         const bool is_stbi; // Flag to track if memory is owned by stbi (malloc) or new
+        unsigned int rc;
 };
 
 /**
@@ -481,33 +485,46 @@ class Kernel : public Tensor<K> {
         * @param size Kernel size (must be odd).
         * @throws std::invalid_argument If size isn't odd.
         */
-        [[nodiscard]] static Kernel<K> gaussian(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS requires std::floating_point<K> {
+        [[nodiscard]] static Kernel<K> gaussian(const unsigned int size, const unsigned int channels = 3) NOEXCEPT_THROWS {
             #ifndef NO_THROWS
                 if (size % 2 == 0) { throw std::invalid_argument("Kernel size must be odd"); }
             #endif
-            Kernel<K> k(size, size, channels);
-            // Compute sigma assuming the kernel radius covers roughly 3 sigma.
-            const K sigma = std::max(static_cast<K>(1), size / static_cast<K>(6));
-            const K two_sigma_sq = static_cast<K>(1) / (static_cast<K>(2) * sigma * sigma);
-            const unsigned int radius = size / 2;
-            // Precompute Gaussian values
-            std::vector<K> gaussian_vs(size);
-            for (unsigned int i = 0; i < size; ++i) {
-                const int x = (i - radius);
-                gaussian_vs[i] = static_cast<K>(std::exp(-(x * x) * two_sigma_sq));
-            }
-            // Get raw pointer
-            K* ptr = k.data;
-            for (unsigned int y = 0; y < size; ++y) {
-                // Cache the Y component of the gaussian
-                const K v_y = gaussian_vs[y];
-                for (unsigned int x = 0; x < size; ++x) {
-                    // Combine X and Y components (exp(a+b) = exp(a)*exp(b))
-                    const K v = (v_y * gaussian_vs[x]);
-                    std::fill_n(ptr, channels, v);
-                    ptr += channels;
+            if constexpr (std::floating_point<K>) {
+                Kernel<K> k(size, size, channels);
+                // Compute sigma assuming the kernel radius covers roughly 3 sigma.
+                const K sigma = std::max(static_cast<K>(1), size / static_cast<K>(6));
+                const K two_sigma_sq = static_cast<K>(1) / (static_cast<K>(2) * sigma * sigma);
+                const unsigned int radius = size / 2;
+                // Precompute Gaussian values
+                std::vector<K> gaussian_vs(size);
+                for (unsigned int i = 0; i < size; ++i) {
+                    const int x = (i - radius);
+                    gaussian_vs[i] = static_cast<K>(std::exp(-(x * x) * two_sigma_sq));
                 }
-            } return k;
+                // Get raw pointer
+                K* ptr = k.data;
+                for (unsigned int y = 0; y < size; ++y) {
+                    // Cache the Y component of the gaussian
+                    const K v_y = gaussian_vs[y];
+                    for (unsigned int x = 0; x < size; ++x) {
+                        // Combine X and Y components (exp(a+b) = exp(a)*exp(b))
+                        const K v = (v_y * gaussian_vs[x]);
+                        std::fill_n(ptr, channels, v);
+                        ptr += channels;
+                    }
+                }
+                return k;
+            } else {
+                Kernel<K> k(size, size, channels);
+                // Make the floating point version compute the values
+                Kernel<float> temp = Kernel<float>::gaussian(size, channels);
+                // Get min value of the kernel, as gaussian its always on the corners
+                const float min_val = temp[0];
+                // Scale, round and cast to K
+                for (unsigned int i = 0; i < k.len(); ++i) {
+                    k[i] = static_cast<K>(std::round(temp[i] / min_val));
+                } return k;
+            }
         }
 
         /**
@@ -1019,6 +1036,7 @@ Image<I> convolute(const Image<I>& image, const Kernel<K>& kernel) NOEXCEPT {
         } return conv;
     #endif
 }
+
 /**
 * @brief Scans a directory for supported image files.
 * * @param folder The directory path to scan.
