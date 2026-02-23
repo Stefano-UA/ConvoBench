@@ -20,10 +20,10 @@ CXXFLAGS := $(CXXFLAGS) -Wno-missing-field-initializers
 CXXFLAGS := $(CXXFLAGS) -DDO_BENCHMARK
 
 # Combinatorial axes definition
-O_AXIS     := O0 O1 O2 O3		  # Optimization
+O_AXIS     := O0 O1 O2 O3 OF  # Optimization
 ARCH_AXIS  := ARCH+ #ARCH-	  # Architecture-Oriented Code
 VEC_AXIS   := VEC~ VEC- #VEC+	# Vectorized Code
-ALIG_AXIS  := ALIG+ ALIG-	    # Aligned Allocation
+ALIG_AXIS  := ALIG+ #ALIG-	  # Aligned Allocation
 IMGDT_AXIS := IMGF IMGC	      # Image Datatype
 KERDT_AXIS := KERF KERD KERI  # Kernel Datatype
 ERR_AXIS   := E+ E-		        # C++ Errors
@@ -35,6 +35,7 @@ O0_FLAGS := -O0
 O1_FLAGS := -O1
 O2_FLAGS := -O2
 O3_FLAGS := -O3
+OF_FLAGS := -Ofast
 
 # Native architecture flags
 ARCH+_FLAGS := -march=native -mtune=native
