@@ -133,5 +133,31 @@ plt.tight_layout()
 plt.savefig(os.path.join(OUTDIR, 'relative_improvement.png'), dpi=300)
 plt.close()
 # <=============================================================>
+#  PLOT 3: Top 10 Fastest Configurations
+# <=============================================================>
+print(" -> Generating Top 10 Fastest Configurations Plot...")
+# Create a unified string representation of each configuration
+df['Config_String'] = df[CATEGORICAL].apply(
+    lambda row: ' | '.join([f"{col}{val}" for col, val in row.items()]), axis=1
+)
+# Extract the 10 rows with the lowest total execution time
+df_top10 = df.nsmallest(10, TARGET_CONV)
+plt.figure(figsize=FIGSIZE)
+# Generate a horizontal bar plot for readability of long labels
+ax_top = sns.barplot(data=df_top10, y='Config_String', x=TARGET_CONV, palette='rocket')
+plt.title(f'Top Fastest Configurations by {TARGET_CONV}')
+plt.xlabel('Execution Time (Seconds)')
+plt.ylabel('Configuration')
+# Annotate each bar with its exact execution time
+for p in ax_top.patches:
+    ax_top.annotate(
+        format(p.get_width(), '.4f'),
+        (p.get_width(), p.get_y() + p.get_height() / 2.),
+        ha='left', va='center', xytext=(5, 0), textcoords='offset points', fontsize=10
+    )
+plt.tight_layout()
+plt.savefig(os.path.join(OUTDIR, 'top_fastest.png'), dpi=600)
+plt.close()
+# <=============================================================>
 print(" [OK] Analysis complete.")
 # <=============================================================>
