@@ -53,7 +53,9 @@ cp -r "$IN_DIR" "${RUN_DIR}"
 # <===============================================================================>
 #  Initialize CSV Header
 # <===============================================================================>
-echo "O,ARCH,VEC,ALIG,IMG,KER,E,FM,S,Total_s,Read_s,Read_cyc,Write_s,Write_cyc,Conv_s,Conv_cyc,Ker_s,Ker_cyc" > "$CSV_OUT"
+if [ ! -f "$CSV_OUT" ]; then
+    echo "O,ARCH,VEC,ALIG,IMG,KER,MINC,E,FM,S,Total_s,Read_s,Read_cyc,Write_s,Write_cyc,Conv_s,Conv_cyc,Ker_s,Ker_cyc" > "$CSV_OUT"
+fi
 # <===============================================================================>
 #  Iterate over all valid executables
 # <===============================================================================>
@@ -79,9 +81,17 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
     val_ALIG="${parts[4]#ALIG}"
     val_IMG="${parts[5]#IMG}"
     val_KER="${parts[6]#KER}"
-    val_E="${parts[7]#E}"
-    val_FM="${parts[8]#FM}"
-    val_S="${parts[9]#S}"
+    val_MINC="${parts[7]#MINC}"
+    val_E="${parts[8]#E}"
+    val_FM="${parts[9]#FM}"
+    val_S="${parts[10]#S}"
+    # <===============================================================================>
+    #  Test if already executed
+    # <===============================================================================>
+    if grep -q "^${val_O},${val_ARCH},${val_VEC},${val_ALIG},${val_IMG},${val_KER},${val_MINC},${val_E},${val_FM},${val_S}," "$CSV_OUT" 2>/dev/null; then
+        printf " %-50s | %-20s | %-20s\n" "$basename" "[SKIPPED]" "Already in CSV"
+        continue
+    fi
     # <===============================================================================>
     #  Aggregation variables setup
     # <===============================================================================>
@@ -176,7 +186,7 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
     # <===============================================================================>
     #  Write to CSV
     # <===============================================================================>
-    echo "${val_O},${val_ARCH},${val_VEC},${val_ALIG},${val_IMG},${val_KER},${val_E},${val_FM},${val_S},${avg_total},${avg_r_s},${avg_r_c},${avg_w_s},${avg_w_c},${avg_c_s},${avg_c_c},${avg_k_s},${avg_k_c}" >> "$CSV_OUT"
+    echo "${val_O},${val_ARCH},${val_VEC},${val_ALIG},${val_IMG},${val_KER},${val_MINC},${val_E},${val_FM},${val_S},${avg_total},${avg_r_s},${avg_r_c},${avg_w_s},${avg_w_c},${avg_c_s},${avg_c_c},${avg_k_s},${avg_k_c}" >> "$CSV_OUT"
     current_time="$(date +%s)"
     elapsed="$(( current_time - SCRIPT_START ))"
     elapsed_str="$(printf "%02dh %02dm %02ds" "$((elapsed/3600))" "$(( (elapsed%3600)/60 ))" "$((elapsed%60))")"
