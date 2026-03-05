@@ -20,7 +20,7 @@ WKDIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")")"
 INPUT_DIR="${WKDIR}/../input"
 OUTPUT_DIR="${WKDIR}/../output"
 OUTPUT_FILE="${WKDIR}/../README.md"
-PAGES_LINK="Stefano-UA.github.io/QOL_Study"
+PAGES_LINK="stefano-ua.github.io/ConvoBench"
 # <=====================================================>
 #  Check if directories exist
 # <=====================================================>

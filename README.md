@@ -14,7 +14,7 @@ High-performance implementation of image convolution kernels in C++23. This proj
 ### Live Demo
 Browse the processed image gallery and compare different kernels here:
 
-[**Image Convolution Gallery**](https://Stefano-UA.github.io/QOL_Study)
+[**Image Convolution Gallery**](https://stefano-ua.github.io/ConvoBench)
 
 ---
 
@@ -334,4 +334,4 @@ The following sections showcase the visual impact of each implemented convolutio
 </details>
 
 ---
-*README automatically generated on 2026-03-05 12:00:36 UTC*
+*README automatically generated on 2026-03-05 12:06:35 UTC*
