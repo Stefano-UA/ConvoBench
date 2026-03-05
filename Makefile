@@ -1,14 +1,17 @@
 # Compiler to use
 CXX      := g++
-# Lib directory
+# Directories
+SRC_DIR  := src
+INC_DIR  := include
 LIB_DIR  := lib
 
 # Flags used:
 # -std=c++23 : Use standard C++23 (minimum for this project)
 # -Wall -Wextra : Show all warnings
 # -MMD -MP : Generate .d files to track header dependencies automatically
+# -I$(INC_DIR) : Look for header files in the $(INC_DIR) directory
 # -I$(LIB_DIR) : Look for header files in the $(LIB_DIR) directory
-CXXFLAGS := -std=c++23 -Wall -Wextra -MMD -MP -I$(LIB_DIR)
+CXXFLAGS := -std=c++23 -Wall -Wextra -Wno-psabi -MMD -MP -I$(INC_DIR) -I$(LIB_DIR)
 
 # Uncomment to print vectorization information
 # CXXFLAGS := $(CXXFLAGS) -fopt-info-vec-missed -fopt-info-vec-optimized
@@ -20,12 +23,13 @@ CXXFLAGS := $(CXXFLAGS) -Wno-missing-field-initializers
 CXXFLAGS := $(CXXFLAGS) -DDO_BENCHMARK
 
 # Combinatorial axes definition
-O_AXIS     := O0 O1 O2 O3 OF  # Optimization
+O_AXIS     ?= O0 O3 OF #O1 O2 # Optimization
 ARCH_AXIS  := ARCH+ #ARCH-	  # Architecture-Oriented Code
-VEC_AXIS   := VEC~ VEC- #VEC+	# Vectorized Code
+VEC_AXIS   := VEC~ VEC- VEC+	# Vectorized Code
 ALIG_AXIS  := ALIG+ #ALIG-	  # Aligned Allocation
 IMGDT_AXIS := IMGF IMGC	      # Image Datatype
 KERDT_AXIS := KERF KERD KERI  # Kernel Datatype
+MINC_AXIS  := MINC3 MINC4     # Minimum Channels
 ERR_AXIS   := E+ E-		        # C++ Errors
 FM_AXIS    := FM+ FM-			    # Fast Math
 SIL_AXIS   := S+ #S-	        # Silent Code
@@ -57,7 +61,11 @@ IMGC_FLAGS := -DIMG_DTYPE='unsigned char'
 # Kernel datatype flags
 KERF_FLAGS := -DCNV_DTYPE=float
 KERD_FLAGS := -DCNV_DTYPE=double
-KERD_FLAGS := -DCNV_DTYPE=int
+KERI_FLAGS := -DCNV_DTYPE=int
+
+# Minimum channels flags
+MIN3_FLAGS := -DMIN_CHANNELS=3
+MIN4_FLAGS := -DMIN_CHANNELS=4
 
 # Error flags
 E+_FLAGS := -DCHECK_BOUNDS -DPADDED_ACCESS
@@ -74,8 +82,7 @@ S-_FLAGS :=
 # Targets
 BASENAME    := main
 BUILD_DIR   := build
-SRCS        := main.cpp
-RESOURCES   := input output
+SRCS        := $(wildcard $(SRC_DIR)/*.cpp)
 
 .DEFAULT_GOAL := all
 
@@ -84,22 +91,17 @@ RESOURCES   := input output
 define GENERATE_PROFILE_RULES
 
 # Flags for this specific combination
-$(1)_CXXFLAGS := $$(CXXFLAGS) $$($(2)_FLAGS) $$($(3)_FLAGS) $$($(4)_FLAGS) $$($(5)_FLAGS) $$($(6)_FLAGS) $$($(7)_FLAGS) $$($(8)_FLAGS) $$($(9)_FLAGS) $$($(10)_FLAGS)
+$(1)_CXXFLAGS := $$(CXXFLAGS) $$($(2)_FLAGS) $$($(3)_FLAGS) $$($(4)_FLAGS) $$($(5)_FLAGS) $$($(6)_FLAGS) $$($(7)_FLAGS) $$($(8)_FLAGS) $$($(9)_FLAGS) $$($(10)_FLAGS) $$($(11)_FLAGS)
 
 # Compilation: Matches specific profile object files
 # $< is the source file, $@ is the target file
-$(BUILD_DIR)/v/$(1)/%.o: %.cpp
+$(BUILD_DIR)/v/$(1)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $$(dir $$@)
-	@$$(foreach dir, $(RESOURCES), \
-	    if [ ! -L $(BUILD_DIR)/$$(dir) ]; then \
-	        ln -sfr $$(dir) $(BUILD_DIR)/$$(dir); \
-	    fi; \
-	)
 	@echo "Compiling $$< [$(1)]"
 	$$(CXX) $$($(1)_CXXFLAGS) -c $$< -o $$@
 
 # Linking: Matches specific profile executable
-$(BUILD_DIR)/$(BASENAME).$(1): $$(addprefix $(BUILD_DIR)/v/$(1)/, $$(SRCS:.cpp=.o))
+$(BUILD_DIR)/$(BASENAME).$(1): $$(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/v/$(1)/%.o, $$(SRCS))
 	@echo "Linking $$@..."
 	$$(CXX) $$^ $$($(1)_CXXFLAGS) -o $$@
 
@@ -116,11 +118,13 @@ $(foreach o, $(O_AXIS), \
       $(foreach l, $(ALIG_AXIS), \
         $(foreach i, $(IMGDT_AXIS), \
           $(foreach k, $(KERDT_AXIS), \
-            $(foreach e, $(ERR_AXIS), \
-              $(foreach f, $(FM_AXIS), \
-                $(foreach s, $(SIL_AXIS), \
-                  $(eval TARGETS += $(BUILD_DIR)/$(BASENAME).$(o).$(a).$(v).$(l).$(i).$(k).$(e).$(f).$(s)) \
-                  $(eval $(call GENERATE_PROFILE_RULES,$(o).$(a).$(v).$(l).$(i).$(k).$(e).$(f).$(s),$(o),$(a),$(v),$(l),$(i),$(k),$(e),$(f),$(s),)) \
+            $(foreach m, $(MINC_AXIS), \
+              $(foreach e, $(ERR_AXIS), \
+                $(foreach f, $(FM_AXIS), \
+                  $(foreach s, $(SIL_AXIS), \
+                    $(eval TARGETS += $(BUILD_DIR)/$(BASENAME).$(o).$(a).$(v).$(l).$(i).$(k).$(m).$(e).$(f).$(s)) \
+                    $(eval $(call GENERATE_PROFILE_RULES,$(o).$(a).$(v).$(l).$(i).$(k).$(m).$(e).$(f).$(s),$(o),$(a),$(v),$(l),$(i),$(k),$(m),$(e),$(f),$(s),)) \
+                  ) \
                 ) \
               ) \
             ) \
