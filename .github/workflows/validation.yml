@@ -1,0 +1,22 @@
+name: Convolution Validation
+on:
+  push:
+  pull_request:
+jobs:
+  validate-o3:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential imagemagick
+      - name: Run O3 Validation Tests
+        env:
+          O_AXIS: O3
+        run: |
+          chmod +x scripts/test.sh
+          ./scripts/test.sh
