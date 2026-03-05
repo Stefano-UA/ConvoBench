@@ -79,3 +79,7 @@ __pycache__/
 # visualization output
 visuals/analysis/
 visuals/comparative/
+
+# web input and output
+web/dist/input
+web/dist/output
