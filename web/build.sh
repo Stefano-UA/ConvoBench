@@ -89,36 +89,27 @@ if [ -f "$SECTION_SNP" ] && [ -f "$CARD_SNP" ] && [ -f "$SECTION_END_SNP" ]; the
         # Check if directory
         [ -d "$kernel_dir" ] || continue
         kernelname="$(basename "$kernel_dir")"
-        
         # Format title: (replace underscores with spaces, capitalize)
         title="$(echo "$kernelname" | sed -e 's/_/ /g' | awk '{for(i=1;i<=NF;i++)sub(/./,toupper(substr($i,1,1)),$i)}1')"
-        
         echo "    -> Processing section: $title"
-        
         # Inject Section Start
         sed -e "s|{{KERNEL_ID}}|${kernelname}|g" -e "s|{{TITLE}}|${title}|g" "$SECTION_SNP" >> "$INDEX_FILE"
-
         # Iterate through images inside this kernel folder in the dist
         for image in "${DIST_DIR}/output/${kernelname}"/*; do
             [ -f "$image" ] || continue
             filename="$(basename "$image")"
             img_name="${filename%.*}"
-            
             orig_path="${DIST_DIR}/input/${img_name}"
             shopt -s nullglob
             matches=( "${orig_path}".{jpg,jpeg,png,bmp} )
             shopt -u nullglob
-            
             [ ${#matches[@]} -gt 0 ] || continue
             orig_file="$(basename "${matches[0]}")"
-            
             # Format image title
             img_title="$(echo "$img_name" | sed -e 's/_/ /g' | awk '{for(i=1;i<=NF;i++)sub(/./,toupper(substr($i,1,1)),$i)}1')"
-            
             # URLs relative to index.html
             orig_url="input/${orig_file}"
             proc_url="output/${kernelname}/${filename}"
-            
             # Replace and append card
             sed -e "s|{{IMAGE_NAME}}|${img_title}|g" \
                 -e "s|{{ORIG_URL}}|${orig_url}|g" \
@@ -126,7 +117,6 @@ if [ -f "$SECTION_SNP" ] && [ -f "$CARD_SNP" ] && [ -f "$SECTION_END_SNP" ]; the
                 -e "s|{{KERNEL_NAME}}|${title}|g" \
                 "$CARD_SNP" >> "$INDEX_FILE"
         done
-        
         # Inject Section End
         cat "$SECTION_END_SNP" >> "$INDEX_FILE"
     done
