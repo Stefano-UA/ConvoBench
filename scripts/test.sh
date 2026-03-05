@@ -28,7 +28,8 @@ EXPECTED_FILES=18 # Expected total images generated per binary run
 # <===============================================================================>
 pushd "${WKDIR}/.." &>/dev/null
 echo -e "\nMaking binaries... (Be patient)\n"
-make -j$(nproc) >/dev/null
+# Only make O3 binaries
+O_AXIS=O3 make -j$(nproc) >/dev/null
 popd &>/dev/null
 # <===============================================================================>
 #  Record script start time
