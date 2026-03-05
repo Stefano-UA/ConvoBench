@@ -2,6 +2,9 @@ name: Convolution Validation
 on:
   push:
   pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   validate-o3:
     runs-on: ubuntu-latest
