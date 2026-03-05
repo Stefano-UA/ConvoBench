@@ -92,15 +92,10 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
                 break
             fi
             # Compute Absolute Error (count of pixels exceeding a 2% variance threshold).
-            # -quiet suprime las advertencias sobre metadatos e ICC profiles que corrompen la salida
             RAW_OUT="$(magick compare -quiet -metric AE -fuzz 2% "$REF_FILE" "$TEST_FILE" null: 2>&1)"
-            # Extraemos estrictamente secuencias numéricas y nos quedamos con la última
-            # (AE siempre imprime el recuento final al final del flujo)
             DIFF_PIXELS="$(echo "$RAW_OUT" | grep -oE '[0-9]+' | tail -n 1)"
             # Fail if empty (regex failed) or if any pixels exceeded the fuzz threshold
             if [ -z "$DIFF_PIXELS" ] || [ "$DIFF_PIXELS" -ne 0 ]; then
-                # Descomenta la siguiente línea para depurar si alguna imagen sigue fallando
-                # echo "ERROR: DIFF_PIXELS='$DIFF_PIXELS' | RAW_OUT='$RAW_OUT'"
                 MATCH_FAILED=1
                 break
             fi
