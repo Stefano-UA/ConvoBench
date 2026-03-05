@@ -44,9 +44,8 @@ DIST_DIR="${WKDIR}/dist"
 #  Clean and create directories
 # <=======================================================>
 echo " -> Cleaning output directory: ${DIST_DIR}"
-rm -rf "$DIST_DIR"
-mkdir -p "$DIST_DIR/input"
-mkdir -p "$DIST_DIR/output"
+rm -fr "$DIST_DIR"
+mkdir -p "$DIST_DIR"
 # <=======================================================>
 #  Check if outputs exist
 # <=======================================================>
@@ -58,8 +57,8 @@ fi
 #  Copy assets to distribution folder
 # <=======================================================>
 echo " -> Copying images from ${INPUT_DIR} and ${OUTPUT_DIR}..."
-cp -r "${INPUT_DIR}/"* "${DIST_DIR}/input/" || true
-cp -r "${OUTPUT_DIR}/"* "${DIST_DIR}/output/" || true
+ln -sfr "$INPUT_DIR" "${DIST_DIR}/input"
+ln -sfr "$OUTPUT_DIR" "${DIST_DIR}/output"
 # <=======================================================>
 echo " -> Copying styles..."
 if [ -f "$CSS_SRC" ]; then
