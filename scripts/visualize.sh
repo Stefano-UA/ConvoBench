@@ -33,6 +33,7 @@ echo "Executing Python script..."
 pushd "${WKDIR}/../visuals/" &>/dev/null
 "${VENVDIR}/bin/python" "${WKDIR}/../visuals/analysis.py"
 "${VENVDIR}/bin/python" "${WKDIR}/../visuals/comparative.py"
+"${VENVDIR}/bin/python" "${WKDIR}/../visuals/trinity.py"
 popd &>/dev/null
 echo "Finished executing script!"
 # <============================================>
