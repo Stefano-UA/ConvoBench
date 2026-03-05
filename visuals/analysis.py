@@ -58,7 +58,7 @@ ensure_dir(OUTDIR)
 #  Read input CSV
 # <=============================================================>
 try:
-    df = pd.read_csv(CSV_IN)
+    df = pd.read_csv(CSV_IN, sep=';')
 except FileNotFoundError:
     print(f"[ERROR] Could not find {CSV_IN}")
     sys.exit(1)

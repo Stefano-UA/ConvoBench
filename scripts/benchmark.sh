@@ -25,6 +25,10 @@ CSV_OUT="${WKDIR}/../benchmarks.csv"
 RUN_DIR="/tmp/convobench" # We run on RAM!
 N_RUNS=3 # Number of times to execute each binary for the average
 # <===============================================================================>
+#  Force dot as decimal separator for awk and other locale-aware commands
+# <===============================================================================>
+export LC_NUMERIC=C
+# <===============================================================================>
 #  Build binaries if needed
 # <===============================================================================>
 pushd "${WKDIR}/.." &>/dev/null
@@ -54,7 +58,7 @@ cp -r "$IN_DIR" "${RUN_DIR}"
 #  Initialize CSV Header
 # <===============================================================================>
 if [ ! -f "$CSV_OUT" ]; then
-    echo "O,ARCH,VEC,ALIG,IMG,KER,MINC,E,FM,S,Total_s,Read_s,Read_cyc,Write_s,Write_cyc,Conv_s,Conv_cyc,Ker_s,Ker_cyc" > "$CSV_OUT"
+    echo "O;ARCH;VEC;ALIG;IMG;KER;MINC;E;FM;S;Total_s;Read_s;Read_cyc;Write_s;Write_cyc;Conv_s;Conv_cyc;Ker_s;Ker_cyc" > "$CSV_OUT"
 fi
 # <===============================================================================>
 #  Iterate over all valid executables
@@ -88,7 +92,7 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
     # <===============================================================================>
     #  Test if already executed
     # <===============================================================================>
-    if grep -q "^${val_O},${val_ARCH},${val_VEC},${val_ALIG},${val_IMG},${val_KER},${val_MINC},${val_E},${val_FM},${val_S}," "$CSV_OUT" 2>/dev/null; then
+    if grep -q "^${val_O};${val_ARCH};${val_VEC};${val_ALIG};${val_IMG};${val_KER};${val_MINC};${val_E};${val_FM};${val_S};" "$CSV_OUT" 2>/dev/null; then
         printf " %-50s | %-20s | %-20s\n" "$basename" "[SKIPPED]" "Already in CSV"
         continue
     fi
@@ -186,7 +190,7 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
     # <===============================================================================>
     #  Write to CSV
     # <===============================================================================>
-    echo "${val_O},${val_ARCH},${val_VEC},${val_ALIG},${val_IMG},${val_KER},${val_MINC},${val_E},${val_FM},${val_S},${avg_total},${avg_r_s},${avg_r_c},${avg_w_s},${avg_w_c},${avg_c_s},${avg_c_c},${avg_k_s},${avg_k_c}" >> "$CSV_OUT"
+    echo "${val_O};${val_ARCH};${val_VEC};${val_ALIG};${val_IMG};${val_KER};${val_MINC};${val_E};${val_FM};${val_S};${avg_total};${avg_r_s};${avg_r_c};${avg_w_s};${avg_w_c};${avg_c_s};${avg_c_c};${avg_k_s};${avg_k_c}" >> "$CSV_OUT"
     current_time="$(date +%s)"
     elapsed="$(( current_time - SCRIPT_START ))"
     elapsed_str="$(printf "%02dh %02dm %02ds" "$((elapsed/3600))" "$(( (elapsed%3600)/60 ))" "$((elapsed%60))")"
