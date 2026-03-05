@@ -26,12 +26,12 @@ jobs:
           submodules: 'recursive'
       - name: Copy folders to dist
         run: |
-          mkdir -p ./dist/web
-          cp -r ./input ./output ./dist/web/
+          mkdir -p ./dist
+          cp -r ./input ./output ./dist/
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist/web'
+          path: './dist'
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
