@@ -93,7 +93,7 @@ for FILE_PATH in "${RUN_DIR}/bin/main".*; do
                 break
             fi
             # Compute Absolute Error (count of pixels exceeding a 2% variance threshold).
-            RAW_OUT="$(magick compare -quiet -metric AE -fuzz 2% "$REF_FILE" "$TEST_FILE" null: 2>&1)"
+            RAW_OUT="$(compare -quiet -metric AE -fuzz 2% "$REF_FILE" "$TEST_FILE" null: 2>&1)"
             DIFF_PIXELS="$(echo "$RAW_OUT" | grep -oE '[0-9]+' | tail -n 1)"
             # Fail if empty (regex failed) or if any pixels exceeded the fuzz threshold
             if [ -z "$DIFF_PIXELS" ] || [ "$DIFF_PIXELS" -ne 0 ]; then
