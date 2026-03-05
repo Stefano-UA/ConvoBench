@@ -1,0 +1,14 @@
+                <div class="card">
+                    <h3>{{IMAGE_NAME}}</h3>
+                    <div class="comparison">
+                        <div class="img-container">
+                            <span>Original</span>
+                            <img src="{{ORIG_URL}}" alt="Original" loading="lazy" onclick="openModal(this.src, 'Original - {{IMAGE_NAME}}')">
+                        </div>
+                        <div class="img-container">
+                            <span>Processed</span>
+                            <img src="{{PROC_URL}}" alt="Processed" loading="lazy" onclick="openModal(this.src, '{{KERNEL_NAME}} - {{IMAGE_NAME}}')">
+                        </div>
+                    </div>
+                    <div class="meta">{{KERNEL_NAME}} Filter</div>
+                </div>
